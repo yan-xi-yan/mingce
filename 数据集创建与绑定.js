@@ -73,7 +73,7 @@ if(page==='补充-数据集列表.html'){
   const options=group==='raw'?[['文件导入','13-新建数据集-文件上传.html?group=raw'],['手动创建（表格录入）','14-新建数据集-表格录入.html?group=raw'],['创建采集任务','07-选择连接.html']]:[['手动创建（表格录入）','14-新建数据集-表格录入.html?group=processed'],['创建代码任务','17-创建并绑定数据.html'],['转换流程（暂未开放）',null]];
   id('create-options').replaceChildren();options.forEach(([label,file])=>{const a=d.createElement(file?'a':'button');a.className='creation-option';a.textContent=label;if(file)a.href=route(file);else{a.disabled=true;a.setAttribute('aria-disabled','true');}id('create-options').append(a);});id('create-dialog').showModal();
  };
- const oldSource=openSource;openSource=function(record,overview){oldSource(record,overview);if(record.producer&&record.kind==='代码任务'){const a=id('source-list-link');a.hidden=false;a.textContent='查看代码任务';a.href=route('18-开发准备.html',{name:record.producerName,output:record.name,outputId:record.id,outputMode:'existing',taskId:record.producer});}};
+
 }
 if(page==='17-创建并绑定数据.html'){
  const table=all('.form table.list').at(-1),nameInput=$('input[aria-label="输出名称"]'),rule=table.querySelector('tbody tr').children[2];
