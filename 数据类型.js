@@ -1,0 +1,7 @@
+(()=>{
+const names={BIGINT:'长整数',INT:'整数',INTEGER:'整数',SMALLINT:'短整数',TINYINT:'小整数',DECIMAL:'小数',NUMERIC:'小数',FLOAT:'单精度浮点数',DOUBLE:'双精度浮点数',VARCHAR:'变长文本',CHAR:'定长文本',TEXT:'长文本',STRING:'文本',DATE:'日期',DATETIME:'日期时间',TIMESTAMP:'时间戳',TIME:'时间',BOOLEAN:'布尔值'};
+const aliases={'文本':'STRING','字符串':'STRING','整数':'BIGINT','小数':'DECIMAL(18,2)','小数（18,2）':'DECIMAL(18,2)','小数 (18,2)':'DECIMAL(18,2)','日期':'DATE','时间':'TIME','日期时间':'DATETIME','布尔值':'BOOLEAN'};
+function label(raw){const t=String(raw||'').trim();const type=(aliases[t]||t).toUpperCase(),base=type.match(/^[A-Z]+/)?.[0];return names[base]?names[base]+'（'+type+'）':t;}
+function decorate(root){root.querySelectorAll('th small,.chip,.schema').forEach(n=>{if(n.children.length)return;const next=n.textContent.replace(/(·\s*)(整数|小数|日期|文本|字符串)(?=$|[，；　])/g,(_,dot,t)=>dot+label(t));if(next!==n.textContent)n.textContent=next;});root.querySelectorAll('table').forEach(table=>{const headers=[...table.querySelectorAll('thead th')];const index=headers.findIndex(h=>/^(字段类型|数据类型)$/.test(h.textContent.trim()));if(index<0)return;table.querySelectorAll('tbody tr').forEach(row=>{const cell=row.children[index];if(cell&&!cell.children.length){const next=label(cell.textContent.replace(/\s*⌄$/,''));if(cell.textContent!==next)cell.textContent=next;}});});}
+globalThis.MingceTypes={label,decorate,options:['STRING','BIGINT','DECIMAL(18,2)','DATE','DATETIME','BOOLEAN']};
+})();
