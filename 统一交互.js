@@ -39,10 +39,14 @@ if(page==='07-选择连接.html'){
 }
 // Project center / project creation.
 if(/^0[12]-/.test(page)){
- const main=$('main'),rows=all('main tbody tr');all('main .heading button').forEach(b=>b.onclick=()=>go('02-创建项目.html'));
- rows.forEach((r,i)=>{const cells=[...r.cells||r.querySelectorAll('td')];const links=r.querySelectorAll('.link');if(i<2){const dest=i===0?'04-数据连接列表.html?project='+encodeURIComponent('销售数据工程'):'03-新项目空状态.html?project='+encodeURIComponent('供应链分析')+'&empty=1';bindLink(links[0],dest);const a=d.createElement('a');a.href=dest;a.textContent=cells[0].textContent;cells[0].replaceChildren(a);}else disable(links[0]);if(links[1]){const b=button(links[1].textContent,()=>{b.textContent=b.textContent==='收藏'?'取消收藏':'收藏';r.dataset.favorite=String(b.textContent==='取消收藏');});b.className='link';r.dataset.favorite=String(links[1].textContent==='取消收藏');links[1].replaceWith(b);}});
+ const main=$('main');
+ // Project index is local UI state; it does not alter resource storage or permissions.
+ let localProjects=[];try{const stored=JSON.parse(localStorage.getItem('mingce-project-index-v1')||'[]');if(Array.isArray(stored))localProjects=stored.filter(x=>typeof x.name==='string');}catch{}
+ if(page==='01-项目列表.html'||page==='02-创建项目.html')localProjects.forEach(item=>{const tbody=main.querySelector('tbody');if(!tbody||[...tbody.rows].some(r=>r.cells[0].textContent===item.name))return;const row=d.createElement('tr');row.dataset.localProject='true';row.innerHTML='<td>'+esc(item.name)+'</td><td>数据研发部</td><td>张敏</td><td>负责人</td><td><span class="tag green">正常</span></td><td>本地创建</td><td><span class="link">进入项目</span></td>';tbody.append(row);});
+ const rows=all('main tbody tr');all('main .heading button').forEach(b=>b.onclick=()=>go('02-创建项目.html'));
+ rows.forEach((r,i)=>{const cells=[...r.cells||r.querySelectorAll('td')];const links=r.querySelectorAll('.link');if(i<2||r.dataset.localProject){const dest=r.dataset.localProject?'项目概览.html?project='+encodeURIComponent(cells[0].textContent)+'&empty=1':i===0?'04-数据连接列表.html?project='+encodeURIComponent('销售数据工程'):'03-新项目空状态.html?project='+encodeURIComponent('供应链分析')+'&empty=1';bindLink(links[0],dest);const a=d.createElement('a');a.href=dest;a.textContent=cells[0].textContent;cells[0].replaceChildren(a);}else disable(links[0]);if(links[1]){const b=button(links[1].textContent,()=>{b.textContent=b.textContent==='收藏'?'取消收藏':'收藏';r.dataset.favorite=String(b.textContent==='取消收藏');});b.className='link';r.dataset.favorite=String(links[1].textContent==='取消收藏');links[1].replaceWith(b);}});
  const f=main.querySelector('.filter');if(f){const old=f.querySelector('.search'),search=d.createElement('input');search.className='unified-input';search.placeholder='搜索项目名称';search.setAttribute('aria-label','搜索项目名称');old?.replaceWith(search);const specs=[['所属组织',1],['我的角色',3],['项目状态',4]];f.querySelectorAll('div.select').forEach((old,i)=>{const [label,col]=specs[i],s=d.createElement('select');s.className='unified-filter';s.setAttribute('aria-label',label);s.innerHTML='<option value="">'+label+'：全部</option>'+[...new Set(rows.map(r=>r.children[col].textContent))].map(v=>'<option>'+esc(v)+'</option>').join('');s.dataset.col=col;old.replaceWith(s);});let scope='全部项目';const filter=()=>{rows.forEach(r=>r.hidden=!(r.children[0].textContent.includes(search.value.trim())&&[...f.querySelectorAll('select')].every(s=>!s.value||r.children[+s.dataset.col].textContent===s.value)&&(scope!=='我的收藏'||r.dataset.favorite==='true')&&(scope!=='共享给我'||r.children[3].textContent!=='负责人')));};f.querySelectorAll('button').forEach(b=>b.onclick=()=>{if(b.textContent==='重置'){search.value='';f.querySelectorAll('select').forEach(s=>s.value='');}filter();});search.onkeydown=e=>{if(e.key==='Enter')filter();};all('aside .nav').forEach(n=>{n.setAttribute('role','button');n.tabIndex=0;n.onclick=()=>{scope=n.textContent;all('aside .nav').forEach(x=>x.classList.toggle('active',x===n));filter();};n.onkeydown=e=>{if(e.key==='Enter')n.click();};});}
- if(page.startsWith('02-')){const fields=all('.modal-body .field');fields.forEach((field,i)=>{const val=field.querySelector('.input');if(!val)return;if(i===1||i===2){const input=d.createElement(i===2?'textarea':'input');input.id=i===1?'new-project-name':'new-project-description';input.className='unified-input';input.style.width='100%';input.value=i===1?'销售协作工程':val.textContent;input.maxLength=i===1?50:500;input.setAttribute('aria-label',i===1?'项目名称':'项目说明');val.replaceWith(input);}});all('.modal-foot button').forEach(b=>b.onclick=()=>{if(b.textContent==='取消')return go('01-项目列表.html');const name=$('#new-project-name').value.trim();if(name.length<2||name.length>50)return notify('项目名称需为 2～50 个字符');if(rows.some(r=>r.children[0].textContent===name))return notify('项目名称已存在');go('03-新项目空状态.html',{project:name,empty:'1'});});}
+ if(page.startsWith('02-')){const fields=all('.modal-body .field');fields.forEach((field,i)=>{const val=field.querySelector('.input');if(!val)return;if(i===1||i===2){const input=d.createElement(i===2?'textarea':'input');input.id=i===1?'new-project-name':'new-project-description';input.className='unified-input';input.style.width='100%';input.value=i===1?'销售协作工程':val.textContent;input.maxLength=i===1?50:500;input.setAttribute('aria-label',i===1?'项目名称':'项目说明');val.replaceWith(input);}});all('.modal-foot button').forEach(b=>b.onclick=()=>{if(b.textContent==='取消')return go('01-项目列表.html');const name=$('#new-project-name').value.trim();if(name.length<2||name.length>50)return notify('项目名称需为 2～50 个字符');if(rows.some(r=>r.children[0].textContent===name))return notify('项目名称已存在');try{localProjects.push({name});localStorage.setItem('mingce-project-index-v1',JSON.stringify(localProjects));}catch{notify('浏览器未允许保存项目入口，本次仍可继续工作');}go('项目概览.html',{project:name,empty:'1'});});}
 }
 // Static list controls become working local filters; no backend request is made.
 if(body.dataset.list==='1'&&!['04-数据连接列表.html','补充-数据集列表.html','21-调度计划列表.html','12-已有资源列表.html'].includes(page)){
@@ -75,7 +79,7 @@ if(page==='补充-02-选择文件范围.html'||page==='补充-03-文件采集规
  all('button').filter(b=>/检查匹配范围|重新预览/.test(b.textContent)).forEach(b=>b.onclick=()=>notify('已刷新示例文件范围与预览'));
 }
 if(page==='10-确认任务与输出.html'&&params.get('source')==='file'){
- const a=$('#save-draft'),old=a?.onclick;if(a)a.onclick=function(e){if(!$('#task-name').value.trim()||!$('#output-name').value.trim()){e.preventDefault();notify('请填写任务名称和输出数据集名称');return;}old?.call(this,e);this.href=route(this.getAttribute('href'));};
+ const a=$('#save-task'),old=a?.onclick;if(a)a.onclick=function(e){if(!$('#task-name').value.trim()||!$('#output-name').value.trim()){e.preventDefault();notify('请填写任务名称和输出数据集名称');return;}old?.call(this,e);this.href=route(this.getAttribute('href'));};
 }
 if(page==='11-任务配置.html'){
  all('button').filter(b=>b.textContent.includes('编辑配置')).forEach(b=>b.onclick=()=>go(params.get('source')==='file'?'补充-02-选择文件范围.html':'08-选择源表.html',Object.fromEntries(params)));
@@ -100,14 +104,6 @@ if(/^(18-|19-|20-|补充-04-)/.test(page)&&params.get('name')){
  all('td').forEach(td=>{if(td.textContent.trim()==='每日销售汇总'&&params.get('output'))td.textContent=params.get('output');});all('code').forEach(c=>{if(c.textContent==='daily_sales'&&params.get('outputRef'))c.textContent=params.get('outputRef');});
 }
 
-// Draft state pages keep existing destinations; unsupported conflict resolution and publication stay disabled.
-if(page.startsWith('草稿-')){
- all('.textbtn,a,button').filter(n=>n.textContent.trim()==='‹ 返回我的草稿').forEach(n=>bindLink(n,'草稿-列表.html'));
- all('.textbtn').filter(n=>n.textContent.trim()==='放弃草稿').forEach(n=>bindLink(n,'草稿-放弃确认.html'));
- all('button').forEach(b=>{const label=b.textContent.trim();if(['校验','发布','处理冲突'].includes(label))disable(b);if(['重新加载','刷新','重置筛选'].includes(label))b.onclick=()=>go('草稿-列表.html');if(label==='前往项目资源')b.onclick=()=>go('04-数据连接列表.html');if(label==='确认放弃')b.onclick=()=>go('草稿-列表.html',{discarded:'inventory'});if(['继续编辑','稍后处理','清除临时内容','恢复到编辑区'].includes(label)&&b.closest('.modal'))b.onclick=()=>{b.closest('.modal').remove();all('.veil,.overlay,.backdrop').forEach(n=>n.remove());notify(label==='恢复到编辑区'?'已恢复示例编辑内容':'已返回草稿编辑区');};if(label==='重试保存'||label==='保存草稿')b.onclick=()=>notify('示例草稿已保存');});
- if(page==='草稿-列表.html'&&params.get('discarded')==='inventory'){const row=$('tbody tr');row?.remove();feedback($('main'),'草稿已放弃（演示）');}
-}
-
 // For code version and runtime tabs without an existing page, show unavailable state.
 all('.tabs span,.tabs a:not([href])').forEach(el=>{if(/^(代码版本|运行记录|检查记录)$/.test(el.textContent.trim()))disable(el);});
 // Materialize project context for normal clicks, open-in-new-tab and copied links.
@@ -118,6 +114,6 @@ if(window.parent!==window){const old=history.replaceState.bind(history);history.
 
 // Unreleased navigation has no click, keyboard or URL destination.
 all('.project-navigation a,.project-navigation button').filter(n=>n.textContent.trim()==='成员与权限').forEach(n=>{const a=d.createElement('a');a.textContent='成员与权限';a.href=route('项目成员与权限.html');n.replaceWith(a);});
-const closedLabels=new Set(['我的草稿','最近访问','我的收藏','共享给我']);
-all('a,button,.nav').forEach(n=>{if(closedLabels.has(n.textContent.trim())||/^(草稿-)/.test(n.getAttribute('href')||'')){disable(n);n.onkeydown=null;n.tabIndex=-1;n.title='暂未开放';}});
+const closedLabels=new Set(['最近访问','我的收藏','共享给我']);
+all('a,button,.nav').forEach(n=>{if(closedLabels.has(n.textContent.trim())){disable(n);n.onkeydown=null;n.tabIndex=-1;n.title='暂未开放';}});
 })();

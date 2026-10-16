@@ -11,6 +11,18 @@
     for (const key of ['project','projectId','empty','as']) if (params.has(key)) query.set(key, params.get(key));
     return '数据连接-编辑配置.html?' + query + '#config';
   };
+  // Restore non-sensitive list metadata between prototype pages. Never store credentials.
+  const indexKey='mingce.ui.connections.v1.'+(params.get('project')||'销售数据工程');
+  let savedRows=[];try{const value=JSON.parse(sessionStorage.getItem(indexKey)||'[]');if(Array.isArray(value))savedRows=value.filter(x=>typeof x.name==='string');}catch{}
+  for(const item of savedRows){
+    if(rows().some(r=>r.cells[0].textContent.trim()===item.name))continue;
+    const row=tbody.insertRow();for(let i=0;i<7;i++)row.insertCell();
+    const nameLink=document.createElement('a');nameLink.className='name';nameLink.textContent=item.name;nameLink.href=configUrl(item.name);row.cells[0].append(nameLink);
+    row.cells[1].textContent='关系型数据库';row.cells[2].textContent='MySQL';
+    const badge=document.createElement('span');badge.className='status';badge.textContent=Object.values(labels).includes(item.test)?item.test:'未测试';row.cells[3].append(badge);
+    row.cells[4].textContent='张敏';row.cells[5].textContent='本次会话';
+    const config=document.createElement('a');config.className='action';config.textContent='配置';config.href=configUrl(item.name);row.cells[6].append(config);
+  }
   // Restore the saved demonstration row before collecting filter options.
   if (params.has('savedConnection')) {
     const saved = new URLSearchParams(params.get('savedConnection'));
@@ -34,6 +46,9 @@
       feedback.textContent='数据连接“'+name+'”已保存（演示）'; root.prepend(feedback);
     }
   }
+  function rememberRows(){try{sessionStorage.setItem(indexKey,JSON.stringify(rows().map(r=>({name:r.cells[0].textContent.trim(),test:r.cells[3].querySelector('.status')?.textContent.trim()||'未测试'}))));}catch{}}
+  rememberRows();
+  new MutationObserver(rememberRows).observe(tbody,{subtree:true,childList:true,characterData:true});
   rows().forEach(row => {
     row.dataset.category='RELATIONAL_DATABASE'; row.dataset.connectorType='MYSQL';
     row.dataset.testStatus=Object.keys(labels).find(code => labels[code]===row.cells[3].querySelector('.status')?.textContent.trim()) || 'UNAVAILABLE';
