@@ -8,10 +8,10 @@ body{color:#30445f}.main{padding:25px 28px 60px}.sidebar{bottom:32px}.heading{ma
 
 const q=new URLSearchParams(location.search);let version=q.get('version')==='11'?'11':'12';
 const el=id=>document.getElementById(id);
-function url(page,v=version){const p=new URLSearchParams();p.set('version',v);if(q.get('favorite')==='1')p.set('favorite','1');return page+'?'+p.toString();}
+function url(page,v=version){const p=new URLSearchParams(q);p.set('datasetId',q.get('datasetId')||'orders');p.set('version',v);if(q.get('favorite')==='1')p.set('favorite','1');return page+'?'+p.toString();}
 function toast(t){const x=el('feedback');x.textContent=t;x.hidden=false;clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>x.hidden=true,2500);}
 function favorite(b){const on=b.getAttribute('aria-pressed')==='true';q.set('favorite',on?'0':'1');updateFavorite();updateLinks();toast(on?'已取消收藏':'已收藏');}
 function updateFavorite(){const b=el('favorite');b.setAttribute('aria-pressed',String(q.get('favorite')==='1'));b.textContent=q.get('favorite')==='1'?'★ 已收藏':'☆ 收藏';}
 function updateLinks(){document.querySelectorAll('.tabs a').forEach(a=>a.href=url(a.dataset.page));el('view-source').href=url('数据集-04-来源与去向.html');history.replaceState(null,'',url(pageName));}
 function setVersion(v){version=v==='11'?'11':'12';const current=version==='12';el('stat-version').textContent='版本 '+version+(current?'':' · 历史');el('stat-rows').textContent=current?'12,846':'12,120';el('stat-time').textContent=current?'2026-10-14 10:20':'2026-10-13 10:20';if(el('version'))el('version').value=version;updateLinks();}
-function versionDetail(v){setVersion(String(v));el('detail-title').textContent='版本 '+version+' · 生成详情';el('run-id').textContent=version==='12'?'run_20261014_1020':'run_20261013_1020';document.querySelectorAll('tr[data-version]').forEach(r=>r.classList.toggle('selected',r.dataset.version===version));}versionDetail(version);updateFavorite();</script><script src="统一交互.js"></script><script src="数据集创建与绑定.js"></script></body></html>
+function versionDetail(v){setVersion(String(v));el('detail-title').textContent='版本 '+version+' · 生成详情';el('run-id').textContent=version==='12'?'run_20261014_1020':'run_20261013_1020';document.querySelectorAll('tr[data-version]').forEach(r=>r.classList.toggle('selected',r.dataset.version===version));}versionDetail(version);updateFavorite();</script><script src="统一交互.js"></script><script src="数据集创建与绑定.js"></script><script src="数据集示例.js"></script><script src="数据集详情.js"></script></body></html>
