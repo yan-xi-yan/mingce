@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const d=document,b=d.body,query=new URLSearchParams(location.search);
-const choices={baseline:'当前版',graphite:'A · 石墨深色',azure:'B · 钴蓝企业',minimal:'C · 极简浅色'};
+const choices={baseline:'当前版',studio:'D · 数据工作室',graphite:'A · 石墨深色',azure:'B · 钴蓝企业',minimal:'C · 极简浅色'};
 let view=query.get('view');
 try{if(!Object.hasOwn(choices,view))view=sessionStorage.getItem('mingce.ui.variant');}catch{}
 if(!Object.hasOwn(choices,view))view='baseline';

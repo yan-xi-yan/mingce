@@ -3,7 +3,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 (async()=>{
  const browser=await chromium.launch({channel:'msedge',headless:true});
  const files=fs.readdirSync('.').filter(f=>f.endsWith('.html'));
- for(const skin of ['graphite','azure','minimal']){
+ for(const skin of ['graphite','azure','minimal','studio']){
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(v=>sessionStorage.setItem('mingce.ui.variant',v),skin);

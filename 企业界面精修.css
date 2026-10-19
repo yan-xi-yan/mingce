@@ -1,0 +1,51 @@
+/* Mingce enterprise console: restrained surfaces, readable supporting text,
+   4px geometry and a consistent 36px control rhythm. Visual overrides only. */
+body.mc-app[data-mc-variant="azure"]{
+ --skin-bg:#f3f5f8;--skin-raised:#f5f7fb;--skin-border:#dfe5ee;
+ --skin-text:#192b43;--skin-secondary:#435770;--skin-muted:#60738c;
+ --skin-accent:#2458ca;--skin-primary:#2458ca;--skin-nav:#203b65;
+ --skin-nav-text:#d2dceb;--skin-radius:4px;
+ font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;
+}
+body.mc-app[data-mc-variant="azure"] .mc-main{padding:24px 28px}
+body.mc-app[data-mc-variant="azure"] :is(h1,.mc-project-heading h1,.unified-detail h1){font-size:22px;line-height:1.5;font-weight:600;letter-spacing:0}
+body.mc-app[data-mc-variant="azure"] :is(.workspace,.mc-surface,.resource-header,.panel,.card){box-shadow:none!important;border-radius:4px}
+body.mc-app[data-mc-variant="azure"] .mc-rail{padding-left:8px;padding-right:8px;background:#203b65}
+body.mc-app[data-mc-variant="azure"] .mc-rail-heading{font-size:13px;font-weight:600;padding:5px 16px 18px;color:#fff}
+body.mc-app[data-mc-variant="azure"] .mc-nav-label{font-size:11px;letter-spacing:0;color:#abbdd6;padding-top:20px}
+body.mc-app[data-mc-variant="azure"] .mc-rail>a{font-size:13px;padding:10px 16px;border-radius:4px}
+body.mc-app[data-mc-variant="azure"] .mc-rail>a[aria-current]{background:#e8effc;color:#1d4ba9;box-shadow:none;font-weight:600}
+body.mc-app[data-mc-variant="azure"] .mc-rail>a[aria-current] svg{color:#2458ca}
+body.mc-app[data-mc-variant="azure"] .mc-rail-bottom{border-color:#526989}
+body.mc-app[data-mc-variant="azure"] .mc-rail>a:not([aria-current]):hover{background:#304e77;color:#fff}
+body.mc-app[data-mc-variant="azure"] :is(.button,a.button,button.primary,.mc-create-menu>summary){min-height:36px;padding:6px 14px;border-radius:4px;font-size:13px;line-height:22px}
+body.mc-app[data-mc-variant="azure"] :is(.unified-main input.unified-input,.unified-main select.unified-filter){min-height:36px;padding:6px 10px;border-radius:4px;font-size:13px}
+body.mc-app[data-mc-variant="azure"] :is(input::placeholder,textarea::placeholder){color:#687c95;opacity:1}
+body.mc-app[data-mc-variant="azure"] :is(.toolbar,.filter){gap:10px;margin-bottom:20px}
+body.mc-app[data-mc-variant="azure"] .content{padding:24px}
+body.mc-app[data-mc-variant="azure"] .section-title h2{font-size:18px;line-height:1.5}
+body.mc-app[data-mc-variant="azure"] :is(.mc-page-description,.mc-project-heading p){font-size:13px;color:#60738c;line-height:1.8}
+body.mc-app[data-mc-variant="azure"] :is(th,.mc-directory th){height:42px;font-size:12px;font-weight:600;background:#f5f7fb!important;color:#435770!important;padding-top:11px;padding-bottom:11px}
+body.mc-app[data-mc-variant="azure"] :is(td,.mc-directory td){font-size:13px;line-height:1.8;font-variant-numeric:tabular-nums}
+body.mc-app[data-mc-variant="azure"] .mc-directory td{height:60px}
+body.mc-app[data-mc-variant="azure"] .content td{padding-top:16px;padding-bottom:16px}
+body.mc-app[data-mc-variant="azure"] :is(.status,.badge,.tag,.total){border-radius:3px;font-size:12px;padding:2px 7px;line-height:1.6}
+body.mc-app[data-mc-variant="azure"] .total{background:#edf1f6;color:#53667e;font-weight:400}
+body.mc-app[data-mc-variant="azure"] :is(.status.gray,.tag.gray){color:#586a80;background:#edf1f6}
+body.mc-app[data-mc-variant="azure"] :is(.status.wait,.warning-status){color:#865600;background:#fff3d9}
+body.mc-app[data-mc-variant="azure"] .mc-surface-title{min-height:56px;padding:16px 20px}
+body.mc-app[data-mc-variant="azure"] .mc-surface-title h2{font-size:14px;font-weight:600}
+body.mc-app[data-mc-variant="azure"] .mc-directory-toolbar{padding-top:20px}
+body.mc-app[data-mc-variant="azure"] .mc-worktab.is-active{background:#fff;border-bottom-color:#2458ca}
+body.mc-app[data-mc-variant="azure"] .mc-worktab>a{font-size:13px}
+body.mc-app[data-mc-variant="azure"] .mc-recent-item{padding-top:14px;padding-bottom:14px;font-size:13px}
+body.mc-app[data-mc-variant="azure"] :is(.mc-help,.mc-recent-empty>span,.mc-surface-title>span,.mc-directory-toolbar>span){font-size:12px;color:#60738c}
+body.mc-app[data-mc-variant="azure"] :focus-visible{outline:2px solid #2458ca;outline-offset:3px}
+body.mc-app[data-mc-variant="azure"] :is(.workflow-notice,.notice,.unified-feedback){border-radius:4px;line-height:1.8;font-size:13px}
+@media(max-width:760px){
+ body.mc-app[data-mc-variant="azure"] .mc-main{padding:18px 12px}
+ body.mc-app[data-mc-variant="azure"] .mc-rail{padding-left:4px;padding-right:4px}
+ body.mc-app[data-mc-variant="azure"] .mc-rail>a{padding-left:15px}
+ body.mc-app[data-mc-variant="azure"] :is(.button,a.button,.mc-create-menu>summary){min-height:44px}
+ body.mc-app[data-mc-variant="azure"] .content{padding:18px 14px}
+}
