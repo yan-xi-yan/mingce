@@ -54,7 +54,7 @@ if(manual||upload){
     if(f.type==='DATETIME'){const v=value.replace(' ','T');ok=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v+'Z'))&&new Date(v+'Z').toISOString().slice(0,19)===v;}
     if(!ok)return message('第 '+(i+1)+' 行 '+f.name+' 不符合 '+MingceTypes.label(f.type));
    }
-   const record={id:uid('manual-'),name,group,method:'手动创建',source:'表格录入',kind:'录入记录',input:actual.length+' 行 · '+fields.length+' 个字段',state:actual.length?'可用':'待产出',owner:'张敏',updated:'刚刚',description:'',schema:fields,rows:actual,hasData:actual.length>0,producer:null,writable:true};
+   const record={id:uid('manual-'),name,group,method:'手动创建',source:'表格录入',kind:'录入记录',input:actual.length+' 行 · '+fields.length+' 个字段',state:actual.length?'可用':'待录入',owner:'张敏',updated:'刚刚',description:'',schema:fields,rows:actual,rowCount:actual.length,versionNumber:actual.length?1:null,committedAt:actual.length?new Date().toISOString():null,hasData:actual.length>0,producer:null,writable:true};
    if(save([...read(),record]))location.href=p.get('returnTo')==='code'?route('17-创建并绑定数据.html',{bindOutput:record.id,returnFromManual:'1'}):route('补充-数据集列表.html',{group});
   };
  }
@@ -64,8 +64,8 @@ if(manual||upload){
 }
 if(page==='补充-数据集列表.html'){
  // Merge this session's manually created targets; do not add duplicates on refresh.
- read().forEach(record=>{const i=datasets.findIndex(x=>x.id===record.id);if(i<0)datasets.push(record);else datasets[i]=record;});
- const oldRender=render;render=function(){oldRender();const count=datasets.length;$('.content .total').textContent=count;all('.category.active .count').forEach(n=>n.textContent=count);id('create-dataset').textContent='＋ 新建数据集';all('#dataset-rows tr').forEach(row=>{const record=datasets.find(x=>x.id===row.dataset.id);if(record?.state==='待产出')row.children[3].querySelector('.status').classList.add('wait');});};
+ read().forEach(record=>{if(['手动创建','手工录入'].includes(record.method)&&!record.hasData&&['待导入','待产出'].includes(record.state))record.state='待录入';const i=datasets.findIndex(x=>x.id===record.id);if(i<0)datasets.push(record);else datasets[i]=record;});
+ const oldRender=render;render=function(){oldRender();const count=datasets.length;$('.content .total').textContent=count;all('.category.active .count').forEach(n=>n.textContent=count);id('create-dataset').textContent='＋ 新建数据集';all('#dataset-rows tr').forEach(row=>{const record=datasets.find(x=>x.id===row.dataset.id);if(['待产出','待录入'].includes(record?.state))row.children[3].querySelector('.status').classList.add('wait');});};
  if(!all('#status-filter option').some(o=>o.value==='待产出')){const o=d.createElement('option');o.value=o.textContent='待产出';id('status-filter').append(o);}
  activate(group);
  id('create-dataset').onclick=()=>{
@@ -73,7 +73,7 @@ if(page==='补充-数据集列表.html'){
   const options=group==='raw'?[['文件导入','13-新建数据集-文件上传.html?group=raw'],['手动创建（表格录入）','14-新建数据集-表格录入.html?group=raw'],['创建采集任务','07-选择连接.html']]:[['手动创建（表格录入）','14-新建数据集-表格录入.html?group=processed'],['创建代码任务','17-创建并绑定数据.html'],['转换流程（暂未开放）',null]];
   id('create-options').replaceChildren();options.forEach(([label,file])=>{const a=d.createElement(file?'a':'button');a.className='creation-option';a.textContent=label;if(file)a.href=route(file);else{a.disabled=true;a.setAttribute('aria-disabled','true');}id('create-options').append(a);});id('create-dialog').showModal();
  };
- const oldSource=openSource;openSource=function(record,overview){oldSource(record,overview);if(record.producer&&record.kind==='代码任务'){const a=id('source-list-link');a.hidden=false;a.textContent='查看代码任务';a.href=route('18-开发准备.html',{name:record.producerName,output:record.name,outputId:record.id,outputMode:'existing',taskId:record.producer});}};
+
 }
 if(page==='17-创建并绑定数据.html'){
  const table=all('.form table.list').at(-1),nameInput=$('input[aria-label="输出名称"]'),rule=table.querySelector('tbody tr').children[2];
@@ -86,7 +86,7 @@ if(page==='17-创建并绑定数据.html'){
  let newOutputName=nameInput.value;
  const inputIds=['orders','customers'];
  function eligible(r){return r.group==='processed'&&r.writable===true&&!r.producer&&!inputIds.includes(r.id);}
- function refresh(){const records=read().filter(eligible),selected=id('existing-output').value;id('existing-output').innerHTML='<option value="">请选择已有加工数据集</option>'+records.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.name)+' · '+(r.hasData?'已有数据':'待产出')+'</option>').join('');id('existing-output').value=selected;id('output-empty').textContent=records.length?'仅列出有写入权且未被生产任务占用的加工数据集':'暂无可绑定的加工数据集，可先手动创建';}
+ function refresh(){const records=read().filter(eligible),selected=id('existing-output').value;id('existing-output').innerHTML='<option value="">请选择已有加工数据集</option>'+records.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.name)+' · '+(r.hasData?'已有数据':r.state||'待录入')+'</option>').join('');id('existing-output').value=selected;id('output-empty').textContent=records.length?'仅列出有写入权且未被生产任务占用的加工数据集':'暂无可绑定的加工数据集，可先手动创建';}
  function update(){const existing=id('output-mode').value==='existing',r=read().find(x=>x.id===id('existing-output').value);picker.hidden=!existing;nameInput.readOnly=existing;if(existing)nameInput.value=r?.name||'';else nameInput.value=nameInput.value||'每日销售汇总';id('replace-warning').hidden=!(existing&&r?.hasData);id('replace-confirm').checked=false;let structure=id('target-schema');if(!structure){structure=d.createElement('div');structure.id='target-schema';structure.className='panel';picker.append(structure);}structure.hidden=!(existing&&r);if(r)structure.textContent='目标结构：'+(r.schema||[]).map(f=>f.name+' · '+MingceTypes.label(f.type)).join('；');rule.textContent=existing?'绑定现有对象；成功运行后更新数据':'新建加工数据集；首次成功后可用';}
  id('output-mode').onchange=()=>{if(id('output-mode').value==='existing')newOutputName=nameInput.value;else nameInput.value=newOutputName;refresh();update();};id('existing-output').onchange=update;
  const create=all('.actions a').find(a=>a.textContent==='创建代码任务');
