@@ -1,5 +1,17 @@
 /* UI UX Pro Max informed studio: grid typography, restrained geometry,
    explicit global/project/content layers. Existing business DOM is retained. */
+body.mc-app[data-mc-variant="studio"] .studio-resource-title{display:block;min-width:0;flex:1}
+body.mc-app[data-mc-variant="studio"] :is(.modalhead,.dialog-head){padding:18px 24px;border-bottom:1px solid #dce2e9;font-size:16px;font-weight:600;color:#192c42}
+body.mc-app[data-mc-variant="studio"] :is(.modalbody,.dialog-body){padding:24px;line-height:1.8;color:#44576d}
+body.mc-app[data-mc-variant="studio"] :is(.modalactions,.dialog-foot){padding:16px 24px;border-top:1px solid #dce2e9;background:#fbfcfe;gap:10px}
+body.mc-app[data-mc-variant="studio"] :is(.modal,.drawer,dialog){border-color:#dce2e9;border-radius:5px;box-shadow:0 16px 60px #192c4229;max-height:calc(100dvh - 40px);overflow:auto}
+body.mc-app[data-mc-variant="studio"] .overlay{background:#14243866}
+body.mc-app[data-mc-variant="studio"] :is(.modalbody,.dialog-body) h3{font-size:14px;margin:20px 0 12px}
+body.mc-app[data-mc-variant="studio"] .mc-top .mc-account .mc-dropdown{color:#192c42}
+body.mc-app[data-mc-variant="studio"] .studio-table-meta{min-height:42px}
+body.mc-app[data-mc-variant="studio"] .content td .small{font-size:12px;color:#596d83}
+body.mc-app[data-mc-variant="studio"] .mc-directory td:nth-child(2){color:#596d83}
+@media(max-width:760px){body.mc-app[data-mc-variant="studio"] :is(.modal,.drawer,dialog){max-width:calc(100vw - 24px)!important}body.mc-app[data-mc-variant="studio"] :is(.modalhead,.modalbody,.modalactions){padding:16px}body.mc-app[data-mc-variant="studio"] .resource-header{padding:18px 16px 0}body.mc-app[data-mc-variant="studio"] .resource-meta{gap:10px 18px}}
 body.mc-app[data-mc-variant="studio"]{--mc-rail:216px;--mc-header:56px;--mc-blue:#244db4;--mc-bg:#f4f6f9;--mc-line:#dce2e9;--mc-text:#192c42;--skin-bg:#f4f6f9;--skin-surface:#fff;--skin-raised:#f3f5f8;--skin-border:#dce2e9;--skin-text:#192c42;--skin-secondary:#44576d;--skin-muted:#596d83;--skin-accent:#244db4;--skin-primary:#244db4;--skin-nav:#f9fafc;--skin-nav-text:#475b72;--skin-active:#e8eefb;--skin-hover:#f4f7fc;--skin-radius:4px;--skin-font-size:14px;--skin-font:"Segoe UI","Microsoft YaHei UI",sans-serif;--skin-button-text:#fff;background:#f4f6f9;color:#192c42;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif}
 body.mc-app[data-mc-variant="studio"] .mc-top{background:#1d2c40;border-color:#1d2c40;color:#edf3fb;padding-right:24px}
 body.mc-app[data-mc-variant="studio"] .mc-top :is(.mc-brand,.mc-project-select select,.mc-access-entry,.mc-icon-button){color:#edf3fb!important}
@@ -75,3 +87,6 @@ body.mc-app[data-mc-variant="studio"].mc-collapsed .mc-rail{padding-left:4px;pad
 @media(max-width:760px){body.mc-app[data-mc-variant="studio"]{--mc-rail:56px}body.mc-app[data-mc-variant="studio"] .mc-main{padding:20px 12px}body.mc-app[data-mc-variant="studio"] .mc-rail{padding-left:4px;padding-right:4px}body.mc-app[data-mc-variant="studio"] .studio-list-heading{flex-wrap:wrap;gap:12px}body.mc-app[data-mc-variant="studio"] .studio-list-heading .button{margin:0}body.mc-app[data-mc-variant="studio"] .content{padding:0 14px 18px}body.mc-app[data-mc-variant="studio"] :is(.button,a.button){min-height:44px}body.mc-app[data-mc-variant="studio"] .mc-worktabs{padding-left:0}body.mc-app[data-mc-variant="studio"] .form{padding:20px 16px}}
 
 body.mc-app[data-mc-variant="studio"] .studio-list-heading h2{font-size:25px;font-weight:600;line-height:1.4;letter-spacing:-.5px;color:#192c42;margin:0;display:flex;align-items:center;gap:10px}body.mc-app[data-mc-variant="studio"] .studio-list-heading .total{font-size:12px;letter-spacing:0}body.mc-app[data-mc-variant="studio"] .mc-top .mc-console-home{background:#2b3c53!important;border-color:#53647b!important;color:#edf3fb!important}
+
+/* Dialog layers must cover the global header as well as page content. */
+body.mc-app[data-mc-variant="studio"] .overlay{z-index:110}body.mc-app[data-mc-variant="studio"] :is(.modal,.drawer){z-index:111}body.mc-app[data-mc-variant="studio"] .modalhead>a[aria-label="关闭"]{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;border-radius:4px}body.mc-app[data-mc-variant="studio"] .modalhead>a[aria-label="关闭"]:hover{background:#edf1f7}
