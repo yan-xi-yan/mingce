@@ -1,0 +1,24 @@
+// Plain HTML fragments for data rows; Bootstrap owns the styling and plugins.
+export const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const icon = name => `<i class="bi bi-${escape(name)}" aria-hidden="true"></i>`;
+export const badge = (label, tone='secondary') => `<span class="badge rounded-pill badge-soft-${tone==='light'?'secondary':tone}">${escape(label)}</span>`;
+export function button(label, action, {variant='primary', disabled=false, kind='', id='', extra='', icon: symbol=''}={}) {
+ return `<button type="button" class="btn btn-${variant}" data-action="${escape(action)}" ${kind?`data-kind="${escape(kind)}"`:''} ${id?`data-id="${escape(id)}"`:''} ${disabled?'disabled':''} ${extra}>${symbol?icon(symbol):''}${escape(label)}</button>`;
+}
+export const alert = (message,tone='info') => `<div class="alert alert-${tone}" role="${tone==='danger'?'alert':'status'}">${escape(message)}</div>`;
+export function card(title,subtitle,body,action='') {return `<section class="card mb-4"><div class="card-header d-flex justify-content-between align-items-center gap-3"><div><h2 class="card-title mb-0">${escape(title)}</h2>${subtitle?`<p class="card-subtitle">${escape(subtitle)}</p>`:''}</div>${action}</div><div class="card-body">${body}</div></section>`;}
+export function table(columns,rows,{empty='暂无记录',search=true,id='main-table'}={}) {
+ return `${search?`<div class="d-flex justify-content-between align-items-center gap-3 mb-3"><div class="input-group w-50"><span class="input-group-text">${icon('search')}</span><input type="search" class="form-control" aria-label="搜索列表" placeholder="搜索名称或关键词…" data-table-search="${id}"></div><span class="text-muted small" data-table-count="${id}">共 ${rows.length} 条记录</span></div>`:''}<div class="table-responsive"><table class="table table-hover align-middle" id="${id}"><thead><tr>${columns.map(c=>`<th scope="col">${escape(c.title)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${columns.map(c=>`<td>${c.render?c.render(row):escape(row[c.key]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="empty-state" data-table-empty="${id}" ${rows.length?'hidden':''}><div class="empty-state-icon">${icon('inbox')}</div><p class="empty-state-text">${escape(empty)}</p></div></div>`;
+}
+let fieldIndex=0;
+export function field(label,control,hint='') {const id='field-'+(++fieldIndex);return `<div class="mb-3"><label class="form-label" for="${id}">${escape(label)}</label>${control.replace('FIELD_ID',id)}${hint?`<span class="form-text">${escape(hint)}</span>`:''}</div>`;}
+export function pickerControl({id,name='',value='',kind='date',required=false,placeholder='',extra=''}){
+ const symbol=kind==='datetime'?'calendar-event':kind.startsWith('time')?'clock':'calendar3';
+ return `<div class="input-group"><input type="text" class="form-control" id="${id}" ${name?`name="${escape(name)}"`:''} value="${escape(kind==='datetime'?String(value||'').replace('T',' ').replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):\d{2}$/, '$1'):value)}" data-picker="${kind}" placeholder="${escape(placeholder||(kind==='datetime'?'YYYY-MM-DD HH:mm':kind.startsWith('time')?'HH:mm':'YYYY-MM-DD'))}" autocomplete="off" ${required?'required':''} ${extra}><span class="input-group-text">${icon(symbol)}</span></div>`;
+}
+export function input(label,name,value='',{type='text',required=false,placeholder='',extra=''}={}) {return field(label,['date','time','datetime-local'].includes(type)?pickerControl({id:'FIELD_ID',name,value,kind:type==='datetime-local'?'datetime':type,required,placeholder,extra}):`<input id="FIELD_ID" class="form-control" type="${type}" name="${escape(name)}" value="${escape(value)}" ${required?'required':''} placeholder="${escape(placeholder)}" ${extra}>`);}
+// Original forms-select.html: Basic Select / Searchable Select. The original
+// Choices plugin owns the rendered UI; only the business options differ.
+export function select(label,name,value,options,{disabled=false,hint=''}={}) {return field(label,`<select id="FIELD_ID" class="form-select" data-choices data-choices-sort="false" data-choices-search="${options.length>8}" name="${escape(name)}" ${disabled?'disabled':''}>${options.map(o=>`<option value="${escape(o.value)}" ${String(value)===String(o.value)?'selected':''}>${escape(o.label)}</option>`).join('')}</select>`,hint);}
+export function textarea(label,name,value,hint='') {return field(label,`<textarea id="FIELD_ID" name="${escape(name)}" class="form-control" rows="4">${escape(value)}</textarea>`,hint);}
+export function checkbox(label,name,value,checked=false,disabled=false) {const id='check-'+(++fieldIndex);return `<div class="form-check"><input id="${id}" type="checkbox" class="form-check-input" name="${escape(name)}" value="${escape(value)}" ${checked?'checked':''} ${disabled?'disabled':''}><label class="form-check-label" for="${id}">${escape(label)}</label></div>`;}

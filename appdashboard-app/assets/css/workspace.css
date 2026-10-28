@@ -1,0 +1,12 @@
+/* Business layout only. Component visuals come from the original template and Bootstrap. */
+.mc-overview-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--spacing-lg); }
+.mc-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--spacing-lg); }
+.mc-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-md); }
+#workspace-content, #workspace-content .card, #workspace-form, .mc-overview-grid > * { min-width: 0; }
+#workspace-content td { overflow-wrap: anywhere; }
+/* Keep the template's scrollable form frame stable while steps and fields change. */
+#workspace-modal[data-editor-kind] .modal-dialog-scrollable { height: min(880px, calc(100dvh - var(--spacing-xl) * 2)); }
+#workspace-modal[data-editor-kind="project"] .modal-dialog-scrollable { height: min(520px, calc(100dvh - var(--spacing-xl) * 2)); }
+#workspace-modal[data-editor-kind="connection"] .modal-dialog-scrollable,
+#workspace-modal[data-editor-kind="member"] .modal-dialog-scrollable { height: min(680px, calc(100dvh - var(--spacing-xl) * 2)); }
+[hidden] { display: none !important; }

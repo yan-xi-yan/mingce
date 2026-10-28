@@ -1,5 +1,7 @@
 # 明策 · 数据治理平台前端原型
 
+当前 AppDashboard Pro 新版位于 [appdashboard-app](appdashboard-app/README.md)，使用原生 HTML、Bootstrap 与普通 JavaScript。执行 `cd appdashboard-app`、`node server.mjs`，访问 http://127.0.0.1:3004/ 。无需安装依赖或构建。下面的说明仍对应原有多页面原型。
+
 纯 HTML、CSS、JavaScript 交互演示，无需安装前端依赖或构建。当前未接入后端，连接测试、任务运行和权限操作均为演示。
 
 ## 本地运行

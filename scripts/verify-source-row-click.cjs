@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/xrcy1/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{
+ const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];page.setDefaultTimeout(7000);page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:3004/?project='+encodeURIComponent('销售数据工程')+'#tasks');
+ await page.getByRole('button',{name:'新建采集任务',exact:true}).click();const modal=page.getByRole('dialog'),btn=name=>modal.getByRole('button',{name,exact:true}),check=name=>modal.getByRole('checkbox',{name,exact:true});
+ const row=name=>modal.locator('#source-table-list .list-group-item').filter({has:page.locator('[data-source-view="'+name+'"]')});
+ const clickEdge=async(name,top=false)=>{const r=await row(name).boundingBox();await row(name).click({position:{x:top?r.width/2:r.width-6,y:top?4:r.height/2}});};
+ await modal.getByLabel('任务名称',{exact:true}).fill('整行源表选择巡检');await btn('下一步').click();assert(await btn('下一步').isDisabled());
+ await clickEdge('orders');assert(await check('orders').isChecked());assert.equal(await modal.locator('#source-active-table').innerText(),'orders');assert(await btn('下一步').isEnabled());
+ await check('采集 remark').uncheck();await btn('customers').click();assert(await check('customers').isChecked());assert(await check('采集 customer_id').isEnabled());
+ await check('采集 city').uncheck();await clickEdge('orders',true);assert(await check('orders').isChecked());assert(!(await check('采集 remark').isChecked()));
+ await btn('refunds').focus();await page.keyboard.press('Space');assert(await check('refunds').isChecked());assert.equal(await modal.locator('#source-active-table').innerText(),'refunds');
+ await page.keyboard.press('Enter');assert(await check('refunds').isChecked(),'Revisiting a selected row must not deselect it');assert.equal(await page.evaluate(()=>document.activeElement.dataset.sourceView),'refunds');
+ await check('refunds').uncheck();assert(!(await check('refunds').isChecked()));assert(await check('采集 refund_id').isDisabled());
+ await clickEdge('customers');assert(!(await check('采集 city').isChecked()));assert.match(await modal.locator('#source-selection-summary').innerText(),/已选 2 张表/);
+ await modal.getByLabel('搜索表名称',{exact:true}).fill('refund');await clickEdge('refunds');assert(await check('refunds').isChecked());await check('refunds').uncheck();await modal.getByLabel('搜索表名称',{exact:true}).fill('');
+ await clickEdge('customers');await btn('下一步').click();await btn('上一步').click();assert(await check('orders').isChecked());assert(await check('customers').isChecked());assert(!(await check('采集 city').isChecked()));
+ await modal.locator('.modal-dialog').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));await page.screenshot({path:'artifacts/source-picker-row-click.png',fullPage:true});
+ await btn('下一步').click();await btn('下一步').click();assert.equal(await modal.locator('[name^="output:"]').count(),2);await btn('保存配置').click();await modal.waitFor({state:'hidden'});
+ const saved=await page.evaluate(async()=>{const {tasks}=await import('/assets/js/domain/store.js');return tasks({name:'销售数据工程'}).find(t=>t.name==='整行源表选择巡检');});assert.deepEqual(saved.tables,['orders','customers']);assert(!saved.fields.orders.includes('remark'));assert(!saved.fields.customers.includes('city'));
+ assert.deepEqual(errors,[]);console.log('PASS source row blank edges/name/keyboard select and show fields; revisit keeps selection/field edits; checkbox removes once; search/back/save preserve scope.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,0 +1,49 @@
+import {datasetLineage} from './dataset-lineage.js';
+import {resourceLink} from './resource-navigation.js';
+export {resourceLink} from './resource-navigation.js';
+import {escape as e,icon,badge,button,alert,table,pickerControl} from './html.js';
+export const formatTime=value=>value==null||value===''?'—':new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
+export const runLabels={QUEUED:'排队中',RUNNING:'运行中',SUCCEEDED:'成功',SUCCESS:'成功',FAILED:'失败',PARTIAL_FAILED:'部分失败',STOPPING:'停止中',STOPPED:'已停止',CANCELLED:'已取消'};
+export function duration(start,end){const from=new Date(start).getTime(),to=end?new Date(end).getTime():Date.now();if(!Number.isFinite(from)||!Number.isFinite(to))return '—';const seconds=Math.max(0,Math.floor((to-from)/1000)),days=Math.floor(seconds/86400),hours=Math.floor(seconds%86400/3600),minutes=Math.floor(seconds%3600/60);return (days?days+' 天 ':'')+(hours?hours+' 小时 ':'')+(minutes?minutes+' 分 ':'')+seconds%60+' 秒';}
+export const phaseLabels={CHECK:'启动检查',INITIALIZING:'完整初始化',SYNCING:'同步变更'};
+export const statusBadge=status=>badge(runLabels[status]||status,['SUCCESS','SUCCEEDED'].includes(status)?'success':['FAILED','PARTIAL_FAILED'].includes(status)?'danger':['RUNNING','QUEUED'].includes(status)?'primary':'secondary');
+export function tabs(items,prefix='resource'){
+ return `<ul class="nav nav-tabs mb-4" role="tablist">${items.map(([id,label],i)=>`<li class="nav-item" role="presentation"><button class="nav-link ${i?'':'active'}" id="${prefix==='dataset'?'':prefix+'-'}tab-${id}" data-detail-tab="${e(id)}" data-bs-toggle="tab" data-bs-target="#${prefix==='dataset'?'':prefix+'-'}pane-${id}" type="button" role="tab" aria-controls="${prefix==='dataset'?'':prefix+'-'}pane-${id}" aria-selected="${!i}">${label}</button></li>`).join('')}</ul><div class="tab-content">${items.map(([id,,body],i)=>`<div class="tab-pane fade ${i?'':'show active'}" id="${prefix==='dataset'?'':prefix+'-'}pane-${id}" role="tabpanel" aria-labelledby="${prefix==='dataset'?'':prefix+'-'}tab-${id}">${body}</div>`).join('')}</div>`;
+}
+export function datasetBody(record,{producer,downstream=[],connection,allDatasets=[],version}={}){
+ const versions=record.versions?.length?record.versions:record.versionNumber!=null?[{version:record.versionNumber,time:record.committedAt,rows:record.rowCount??record.rows?.length,source:record.source,schema:record.schema,data:record.rows}]:[];
+ const chosen=version==null?null:versions.find(v=>String(v.version)===String(version));
+ const current=version==null||String(version)===String(record.versionNumber);
+ const schema=chosen?.schema??(current?record.schema:[])??[],data=chosen?.data??(current?record.rows:undefined);
+ const waiting=record.state==='待录入'?'尚未录入数据':record.state==='待产出'?'等待任务首次成功产出数据':'预览数据暂不可用';
+ const columns=schema.map(f=>({title:f.name+' · '+f.type,render:r=>e(r[f.name]===null?'NULL':r[f.name]===''?'（空字符串）':r[f.name])}));
+ const preview=Array.isArray(data)&&(versions.length>0||record.state==='可用')?table(columns,data.slice(0,20).map(row=>Object.fromEntries(schema.map((f,i)=>[f.name,Array.isArray(row)?row[i]:row[f.name]]))),{search:false,id:'data-preview',empty:'当前版本无记录'}):alert(waiting,'secondary');
+ const lineage=datasetLineage(record,{producer,downstream,connection,allDatasets});
+ return `<div class="d-flex align-items-center gap-3 mb-3">${icon('table')}<h3 class="h5 mb-0">${e(record.name)}</h3>${badge(record.state||'状态待确认',record.state==='可用'?'success':'warning')}${(version??record.versionNumber)!=null?badge('v'+(version??record.versionNumber),'primary'):''}${version!=null&&!current?badge('历史版本','secondary'):''}</div><p class="text-muted">${e(record.description||'')} · ${record.group==='processed'?'加工数据':'原始数据'} · ${e(record.method||'来源待确认')}</p>`+tabs([
+  ['data','数据预览',`<p class="small text-muted">${version!=null?'查看版本 '+e(version):record.versionNumber!=null?'当前版本 '+e(record.versionNumber):'尚无已生成的数据版本'} · 预览最多 20 行</p>${preview}`],
+  ['schema','字段结构',table([{key:'name',title:'字段名称'},{key:'type',title:'字段类型'}],schema,{id:'schema-preview',search:true,empty:'尚无可用字段结构'})],
+  ['versions','版本记录',table([{title:'版本',render:v=>'v'+e(v.version)},{title:'生成时间（北京时间）',render:v=>e(formatTime(v.time))},{key:'rows',title:'数据行数'},{title:'字段数',render:v=>v.schema?.length??'—'},{key:'source',title:'生产来源'},{title:'操作',render:v=>button('查看数据','dataset-version',{id:record.id,variant:'link',extra:`data-version="${e(v.version)}"`})}],versions,{search:false,id:'version-preview',empty:'尚无已生成的数据版本'})],
+  ['lineage','来源与去向',lineage]
+ ],'dataset');
+}
+export function jobHistory(rows){return '<form class="row g-3 mb-3" id="run-filters"><div class="col-auto" style="width: 180px;"><label for="run-status" class="form-label">运行状态</label><select class="form-select" data-choices data-choices-sort="false" id="run-status"><option value="">全部</option>'+Object.entries(runLabels).filter(([key])=>key!=='SUCCESS').map(([key,label])=>'<option value="'+label+'">'+label+'</option>').join('')+'</select></div><div class="col-auto" style="width: 180px;"><label for="run-trigger" class="form-label">触发方式</label><select class="form-select" data-choices data-choices-sort="false" id="run-trigger"><option value="">全部</option><option>手动启动</option><option>调度触发</option></select></div><div class="col-auto" style="width: 210px;"><label for="run-from" class="form-label">开始日期</label>'+pickerControl({id:'run-from'})+'</div><div class="col-auto" style="width: 210px;"><label for="run-to" class="form-label">结束日期</label>'+pickerControl({id:'run-to'})+'</div><div class="col-auto align-self-end d-flex gap-2"><button class="btn btn-primary" type="submit">查询</button><button class="btn btn-outline-secondary" type="button" data-action="reset-run-filters">重置</button></div></form><div id="run-filter-error" role="alert"></div>'+table([
+ {title:'运行编号',render:r=>button(r.id,'inspect',{kind:'run',id:r.id,variant:'link',extra:'data-task="'+e(r.taskId)+'"'})},
+ {title:'触发方式',render:r=>e(r.planId||r.trigger==='SCHEDULE'?'调度触发':'手动启动')},
+ {title:'开始时间（北京时间）',render:r=>'<time datetime="'+e(new Date(r.start).toISOString())+'">'+e(formatTime(r.start))+'</time>'},
+ {title:'结束时间',render:r=>e(formatTime(r.end))},
+ {title:'状态',render:r=>statusBadge(r.status)},
+ {title:'阶段 / 原因',render:r=>e(r.reason||phaseLabels[r.phase]||'—')}
+ ],rows,{search:true,id:'job-history',empty:'暂无运行记录。运行任务后可在此查看过程和结果。'});}
+export function runBody(run,{task,plan,outputs=[],canWrite=false}={}){
+ const phaseIndex=Object.keys(phaseLabels).indexOf(run.phase),events=[{at:run.start,text:(run.planId||run.trigger==='SCHEDULE'?'调度触发':'手动启动')+'，使用启动时的配置。'}];
+ if(phaseIndex>0)events.push({at:new Date(new Date(run.start).getTime()+(run.demoStarted?1800:3000)),text:'启动检查通过，开始完整初始化。'});
+ if(phaseIndex>1)events.push({at:new Date(new Date(run.start).getTime()+(run.demoStarted?6000:120000)),text:'完整初始化完成，开始持续接收变更。'});
+ if(run.stopRequestedAt)events.push({at:run.stopRequestedAt,text:'已请求停止，等待采集退出。'});
+ if(run.end)events.push({at:run.end,text:run.reason||'本次运行'+(runLabels[run.status]||run.status)});
+ const outputRows=run.objects||((run.outputs||[]).map(o=>{const data=outputs.find(d=>d.id===o.id),version=data?.versions?.find(v=>v.version===o.version);return {...o,state:runLabels[run.status]||run.status,rows:version?.rows??(data?.versionNumber===o.version?data.rowCount:null)};}));
+ const kind=run.type==='continuous'||run.type==='batch'?'tasks':run.type==='flow'?'flows':'code';
+ return `<div class="d-flex gap-3 align-items-center mb-3">${statusBadge(run.status)}${badge('本地演示','secondary')}${run.type==='continuous'&&['RUNNING','STOPPING'].includes(run.status)?button('停止采集','stop-run',{id:run.id,variant:'outline-danger',disabled:!canWrite||run.status!=='RUNNING'}):''}</div><dl class="row"><dt class="col-3">运行编号</dt><dd class="col-9">${e(run.id)}</dd><dt class="col-3">任务</dt><dd class="col-9">${task?resourceLink(task.name,kind,task.id):e(run.name||'任务已不可用')}</dd><dt class="col-3">执行身份</dt><dd class="col-9">项目运行身份</dd><dt class="col-3">触发方式</dt><dd class="col-9">${run.planId||run.trigger==='SCHEDULE'?'调度触发':'手动启动'} · ${plan?resourceLink(plan.name,'plan',plan.id):e(run.actor||'—')}</dd><dt class="col-3">开始时间</dt><dd class="col-9">${e(formatTime(run.start))}（北京时间）</dd><dt class="col-3">结束时间</dt><dd class="col-9">${e(formatTime(run.end))}</dd><dt class="col-3">持续时长</dt><dd class="col-9" data-run-duration data-start="${e(run.start)}" data-end="${e(run.end??'')}">${e(duration(run.start,run.end))}</dd><dt class="col-3">配置版本</dt><dd class="col-9">${e(run.configRevision||run.task?.revision||'—')}</dd></dl>${run.reason?alert(run.reason,'danger'):''}`+
+ (run.phase?`<h3 class="h6">运行阶段</h3><div class="wizard-steps mb-4">${Object.entries(phaseLabels).map(([key,label],i)=>`<div class="wizard-step ${i===phaseIndex?'active':i<phaseIndex?'completed':''}"><div class="wizard-step-icon"><span class="wizard-step-number">${i+1}</span><i class="bi bi-check-lg wizard-step-check"></i></div><div class="wizard-step-label">${label}</div></div>`).join('')}</div>`:'')+
+ `<h3 class="h6 mt-4">源表与输出</h3>`+table([{title:'源表 / 输出',render:o=>{const data=outputs.find(d=>d.name===o.output||d.id===o.id);return e(o.table||'加工输出')+'<small class="d-block">'+(data?(o.version!=null?button(o.output||o.name,'dataset-version',{id:data.id,variant:'link p-0 text-start',extra:'data-version="'+e(o.version)+'"'}):resourceLink(o.output||o.name,'dataset',data.id)):e(o.output||o.name))+'</small>';}},{key:'state',title:'状态'},{title:'本次版本',render:o=>o.version!=null?'v'+e(o.version):'本次未生成'},{key:'rows',title:'版本行数'}],outputRows,{search:false,id:'run-objects',empty:'本次尚未生成输出。'})+
+ alert('本次未生成新版本的输出，仍保留此前已有的可用数据。','secondary')+`<h3 class="h6 mt-4">关键事件</h3>`+table([{title:'时间',render:r=>e(formatTime(r.at))},{key:'text',title:'事件'}],events,{search:false,id:'run-events'});
+}
