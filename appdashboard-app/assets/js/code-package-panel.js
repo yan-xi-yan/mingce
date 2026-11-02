@@ -1,0 +1,15 @@
+import {escape as e,button,badge,table,alert} from './html.js';
+import {formatTime,statusBadge} from './resource-details.js';
+import {packageVersions,packageCompatible} from './code-package-versions.js';
+const size=n=>Number.isFinite(n)?n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB':'—';
+export function codePackagePanel(task,runs,{canWrite=false,canDownload=false,bindingProblem=''}={}){
+ const versions=packageVersions(task),current=versions.find(v=>v.packageId===task.packageId),busy=runs.some(r=>['QUEUED','RUNNING'].includes(r.status)),next=Math.max(0,...versions.map(v=>v.version))+1;
+ return (bindingProblem?alert(bindingProblem+'；请编辑任务配置。','warning'):'')+`<div class="mc-package-heading"><div><h3>代码包版本</h3><p>上传并保存新版本，选择后续测试与运行使用的代码包。</p></div><div class="d-flex gap-2">${button('下载开发模板','download-template',{id:task.id,variant:'outline-secondary',disabled:!canWrite||!!bindingProblem})}${button('上传新版本','edit-package',{kind:'code',id:task.id,variant:'primary',disabled:!canWrite||busy||!!bindingProblem})}</div></div><div class="mc-package-current"><div><span class="small text-muted">当前使用</span><h4>${current?'v'+e(current.version)+' <span>'+e(current.fileName)+'</span>':'尚未选择代码包'}</h4><p>${current?size(current.size)+' · '+(current.uploadedAt?e(formatTime(current.uploadedAt))+' · '+e(current.uploadedBy):'历史上传信息未记录'):'上传第一个 ZIP 版本后，可发起测试。'}</p></div>${current?badge('当前版本','success'):badge('待上传','secondary')}</div><p class="small text-muted">下次上传：v${next} · 运行入口：main.py · ZIP 最大 50 MB。${busy?'任务正在运行，暂不可上传或切换版本。':'切换版本不会改变已提交运行，也不会自动执行任务。'}</p>`+table([
+ {title:'版本',render:v=>'<strong>v'+e(v.version)+'</strong> '+(v.packageId===task.packageId?badge('当前','success'):'')},
+ {title:'代码包',render:v=>e(v.fileName)+'<small class="d-block text-muted">'+size(v.size)+'</small>'},
+ {title:'版本说明',render:v=>e(v.note||'—')},
+ {title:'上传信息',render:v=>v.uploadedAt?e(formatTime(v.uploadedAt))+'<small class="d-block text-muted">'+e(v.uploadedBy)+'</small>':'<span class="text-muted">历史信息未记录</span>'},
+ {title:'最近测试',render:v=>{const test=runs.filter(r=>r.runMode==='TEST'&&r.task?.packageId===v.packageId).sort((a,b)=>b.start-a.start)[0];return test?statusBadge(test.status)+button('查看','inspect',{id:test.id,kind:'run',variant:'link'})+'<small class="d-block text-muted">配置 r'+e(test.task.revision||'—')+'</small>':'<span class="text-muted">未测试</span>'; }},
+ {title:'操作',render:v=>'<div class="d-flex gap-2 flex-wrap">'+button('下载','download-code',{id:task.id,variant:'link',disabled:!canDownload,extra:'data-package="'+e(v.packageId)+'"'})+button(v.packageId===task.packageId?'使用中':'设为当前','use-package-version',{id:task.id,variant:'outline-secondary',disabled:!canWrite||busy||v.packageId===task.packageId||!packageCompatible(task,v)||!!bindingProblem,extra:'data-package="'+e(v.packageId)+'"'})+'</div>'+(!packageCompatible(task,v)?'<small class="text-muted">输入输出绑定已变化</small>':'')}
+ ],versions,{id:'code-package-versions',search:false,empty:'暂无代码包版本。点击「上传新版本」添加 ZIP。'})+'<p class="small text-muted">代码包保存在当前浏览器。版本历史与数据集版本独立，历史版本可下载，已提交运行继续引用提交时的代码包。</p>';
+}

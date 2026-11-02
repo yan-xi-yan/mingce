@@ -74,10 +74,10 @@ export function tasks(p) {
             mode: 'continuous',
             tables: [t.table],
             fields: {
-                [t.table]: catalog[t.table]
+                [t.table]: t.id==='ingest-orders'?catalog[t.table].filter(name=>name!=='remark'):catalog[t.table]
             },
             outputs: {
-                [t.table]: t.table + '_raw'
+                [t.table]: t.id==='ingest-orders'?'订单明细':t.table + '_raw'
             },
             published: true
         }))]);

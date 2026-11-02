@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+
+const storage=()=>{
+ const values=new Map();
+ return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key)};
+};
+globalThis.sessionStorage=storage();
+globalThis.localStorage=storage();
+globalThis.location={search:''};
+const {activeOrganization,joinedOrganizations,selectOrganization,organizationRole,inActiveOrganization}=await import('../appdashboard-app/assets/js/domain/organizations.js');
+const {orgKey,orgState,organizationUsers,canCreate,cap}=await import('../appdashboard-app/assets/js/domain/domain.js');
+
+assert.equal(activeOrganization().id,'east');
+assert.equal(orgKey(),'mingce-appdashboard-org-v1:east');
+localStorage.setItem(orgKey(),JSON.stringify({version:1,revision:7,creators:['zhang','li','wang']}));
+assert.equal(orgState().revision,7);
+assert.equal(organizationUsers().length,6);
+assert.equal(inActiveOrganization({name:'销售数据工程'}),true);
+const before=cap('销售数据工程');
+selectOrganization('operations');
+assert.equal(activeOrganization().id,'operations');
+assert.equal(organizationRole(),'组织成员');
+assert.equal(organizationRole('li'),'组织管理员');
+assert.deepEqual(organizationUsers().map(user=>user.id),['zhang','li','zhou']);
+assert.equal(orgState().revision,1);
+assert.equal(inActiveOrganization({name:'销售数据工程'}),false);
+assert.equal(inActiveOrganization({name:'运营项目',organizationId:'operations'}),true);
+assert.equal(inActiveOrganization({organization:'未知组织'}),false);
+assert.equal(canCreate(),true);
+assert.deepEqual(cap('销售数据工程'),before,'Organization selection must not grant or alter project roles');
+assert.throws(()=>selectOrganization('missing'));
+assert.equal(activeOrganization().id,'operations');
+selectOrganization('east');
+assert.equal(orgState().revision,7,'Keep original organization permissions');
+location.search='?as=wang';
+assert.equal(joinedOrganizations().length,1);
+assert.throws(()=>selectOrganization('operations'));
+sessionStorage.setItem('mingce.appdashboard.active-org.v1.wang',JSON.stringify('operations'));
+assert.equal(activeOrganization().id,'east','Ignore saved organization without membership');
+assert.equal(canCreate(),true,'Honor existing creator grants');
+location.search='?as=chen';
+assert.equal(canCreate(),false);
+location.search='?as=unknown';
+assert.equal(activeOrganization(),null);
+assert.equal(canCreate(),false);
+assert.deepEqual(organizationUsers(),[]);
+console.log('PASS organization membership, scoped roles and creator state, legacy compatibility, project filtering, invalid selections, and account isolation.');

@@ -17,7 +17,7 @@ const {chromium}=require('C:/Users/xrcy1/.cache/codex-runtimes/codex-primary-run
  await modal.getByLabel('搜索表名称',{exact:true}).fill('refund');await clickEdge('refunds');assert(await check('refunds').isChecked());await check('refunds').uncheck();await modal.getByLabel('搜索表名称',{exact:true}).fill('');
  await clickEdge('customers');await btn('下一步').click();await btn('上一步').click();assert(await check('orders').isChecked());assert(await check('customers').isChecked());assert(!(await check('采集 city').isChecked()));
  await modal.locator('.modal-dialog').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));await page.screenshot({path:'artifacts/source-picker-row-click.png',fullPage:true});
- await btn('下一步').click();await btn('下一步').click();assert.equal(await modal.locator('[name^="output:"]').count(),2);await btn('保存配置').click();await modal.waitFor({state:'hidden'});
+ assert.equal(await modal.locator('#source-outputs tbody tr').count(),2);await btn('下一步').click();await btn('保存配置').click();await modal.waitFor({state:'hidden'});
  const saved=await page.evaluate(async()=>{const {tasks}=await import('/assets/js/domain/store.js');return tasks({name:'销售数据工程'}).find(t=>t.name==='整行源表选择巡检');});assert.deepEqual(saved.tables,['orders','customers']);assert(!saved.fields.orders.includes('remark'));assert(!saved.fields.customers.includes('city'));
  assert.deepEqual(errors,[]);console.log('PASS source row blank edges/name/keyboard select and show fields; revisit keeps selection/field edits; checkbox removes once; search/back/save preserve scope.');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});

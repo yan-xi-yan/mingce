@@ -1,5 +1,9 @@
+import {packageVersionUpdate} from '../code-package-versions.js';
+import {publicationSeconds,validatePublicationSeconds} from '../continuous-versions.js';
+import {validateCollection,validateOutputs} from '../collection-config.js';
+import {activeOrganization,organizationRole} from './organizations.js';
 import {validateCodeBindings,codeBindingIssue} from '../code-bindings.js';
-import { read, write, tasks, key, uid, engine } from "./store.js";
+import { read, write, tasks, connections, key, uid, engine } from "./store.js";
 export const users = [{
         id: 'zhang',
         name: '张敏',
@@ -93,25 +97,20 @@ export function cap(project, id = actor()) {
         download: !!m && (m.role === 'owner' || m.download === true || m.allowDataDownload === true)
     };
 }
-export const orgKey = 'mingce-appdashboard-org-v1:east';
+export const orgKey = () => 'mingce-appdashboard-org-v1:' + (activeOrganization()?.id || 'none');
+export function organizationUsers() {
+    const org = activeOrganization();
+    return users.filter(user => org?.members.includes(user.id)).map(user => ({...user, orgRole: organizationRole(user.id)}));
+}
 export function orgState() {
+    const fallback = {version: 1, revision: 1, creators: [...(activeOrganization()?.creators || [])]};
     try {
-        return JSON.parse(localStorage.getItem(orgKey) || 'null') || {
-            version: 1,
-            revision: 1,
-            creators: ['zhang', 'li']
-        };
-    }
-    catch {
-        return {
-            version: 1,
-            revision: 1,
-            creators: ['zhang', 'li']
-        };
-    }
+        const state = JSON.parse(localStorage.getItem(orgKey()) || 'null');
+        return state?.version === 1 && Number.isInteger(state.revision) && Array.isArray(state.creators) ? state : fallback;
+    } catch { return fallback; }
 }
 export function canCreate() {
-    return orgState().creators.includes(actor()) || users.find(u => u.id === actor())?.orgRole === '组织管理员';
+    return !!activeOrganization() && (orgState().creators.includes(actor()) || organizationRole() === '组织管理员');
 }
 export function assertWrite(project) {
     if (!cap(project).write)
@@ -163,6 +162,7 @@ export function saveCode(p, task) {
     const outputs=binding.outputs.map(b=>{const output=b.target?{...b.target}:{id:uid(),name:b.outputName,group:'processed',schema:[],rows:[],state:'待产出',hasData:false,rowCount:0,versionNumber:null,versions:[],writable:true,owner:person(actor())};Object.assign(output,{producer:task.id,producerType:'code',source:next.name,method:'代码任务',input:binding.inputs.map(d=>d.name).join('、'),updated:next.updatedAt});return output;});
     next.outputBindings=binding.outputs.map((b,i)=>({name:b.outputName,mode:b.mode,datasetId:outputs[i].id,reference:b.reference,replaceAcknowledged:!!b.replaceAcknowledged}));
     next.output=next.outputBindings[0].name;next.outputId=outputs[0].id;
+    Object.assign(next,packageVersionUpdate(rows.find(t=>t.id===task.id),next,{now:next.updatedAt,by:person(actor())}));
     const retainedIds=new Set(outputs.map(o=>o.id));
     const detached=read(datasetKey(p.name),[]).filter(data=>!retainedIds.has(data.id)).map(data=>data.producer===task.id?{...data,producer:null,producerType:null,source:'已解除代码任务绑定',input:''}:data);
 
@@ -196,6 +196,20 @@ const orderDetails = {
     "rowCount": 12846,
     "committedAt": "2026-10-14T10:20:00+08:00"
 };
+// Explicit demo snapshots support the version explorer; row counts are illustrative,
+// and only the listed sample rows are present in this frontend.
+orderDetails.demo=true;
+orderDetails.versions=[
+ {version:10,time:'2026-10-14T10:10:00+08:00',rows:12100,source:'订单持续采集',schema:orderDetails.schema.slice(0,4),data:orderDetails.rows.slice(0,5).map(row=>row.slice(0,4)),dataComplete:false,demo:true},
+ {version:11,time:'2026-10-14T10:15:00+08:00',rows:12560,source:'订单持续采集',schema:orderDetails.schema,data:[...orderDetails.rows.slice(0,6).map((row,i)=>i===0?[...row.slice(0,4),'待支付']:[...row]),['10009','2006','45.00','2026-10-13','已关闭']],dataComplete:false,demo:true},
+ {version:12,time:orderDetails.committedAt,rows:orderDetails.rowCount,source:'订单持续采集',schema:orderDetails.schema,data:orderDetails.rows,dataComplete:false,demo:true}
+];
+const orderWindowRunId='RUN-CDC-ORDERS-20261014';
+orderDetails.versions=orderDetails.versions.map((v,i,all)=>({...v,runId:orderWindowRunId,publication:{kind:i?'WINDOW':'INITIAL',windowStart:i?all[i-1].time:'2026-10-14T10:09:54+08:00',windowEnd:v.time}}));
+function orderWindowRun(){return {id:orderWindowRunId,status:'STOPPED',trigger:'MANUAL',actor:'张敏',start:'2026-10-14T10:09:54+08:00',end:'2026-10-14T10:22:00+08:00',phase:'SYNCING',syncStartedAt:orderDetails.versions[0].time,versionIntervalSeconds:300,configRevision:'ingestion-r3',demo:true,
+ outputs:[{id:'orders',name:'订单明细',version:12}],
+ objects:[{id:'orders',table:'sales.orders',output:'订单明细',state:'已停止',version:12,rows:12846,publishedAt:orderDetails.committedAt}],
+ publications:orderDetails.versions.map(v=>({...v.publication,publishedAt:v.time,status:'SUCCEEDED',outputs:[{id:'orders',name:'订单明细',version:v.version}]}))};}
 export function datasets(p) {
     const saved = read(datasetKey(p.name), []);
     return [...(p.empty ? [] : globalThis.MingceDemoDatasets || []).filter((d) => !saved.some(s => s.id === d.id)).map((d) => d.id === 'orders' ? {
@@ -252,8 +266,8 @@ function seedRuns(project, taskId) {
         }];
     if (!known || known.status === 'NOT_RUN' || project !== '销售数据工程')
         return [];
-    const list = [['2026-10-16T08:00:00+08:00', known.status, 'MANUAL', 'SYNCING'], ['2026-10-15T08:00:00+08:00', 'STOPPED', 'MANUAL', 'SYNCING'], ['2026-10-14T08:00:00+08:00', 'FAILED', 'MANUAL', 'CHECK'], ['2026-10-13T08:00:00+08:00', 'PARTIAL_FAILED', 'SCHEDULE', 'INITIALIZING'], ['2026-10-12T08:00:00+08:00', 'STOPPED', 'SCHEDULE', 'SYNCING'], ['2026-10-11T08:00:00+08:00', 'FAILED', 'MANUAL', 'CHECK']];
-    return list.map(([start, status, trigger, phase], i) => {
+    const list = [['2026-10-16T08:00:00+08:00', known.status, 'MANUAL', 'SYNCING'], ['2026-10-15T08:00:00+08:00', 'STOPPED', 'MANUAL', 'SYNCING'], ['2026-10-14T08:00:00+08:00', 'FAILED', 'MANUAL', 'CHECK'], ['2026-10-13T08:00:00+08:00', 'PARTIAL_FAILED', 'MANUAL', 'INITIALIZING'], ['2026-10-12T08:00:00+08:00', 'STOPPED', 'MANUAL', 'SYNCING'], ['2026-10-11T08:00:00+08:00', 'FAILED', 'MANUAL', 'CHECK']];
+    return [...(taskId==='ingest-orders'?[orderWindowRun()]:[]),...list.map(([start, status, trigger, phase], i) => {
         if (status === 'FAILED')
             phase = 'CHECK';
         const objects = currentObjects();
@@ -281,16 +295,16 @@ function seedRuns(project, taskId) {
             reason: status === 'FAILED' ? '源端账号缺少日志读取权限，启动检查未通过。' : status === 'PARTIAL_FAILED' ? 'sales.customer_contacts 的字段结构已变化，本次采集已终止。' : '',
             stopBy: status === 'STOPPED' ? '张敏' : null
         };
-    });
+    })];
 }
 export function runs(p, t) {
     return read(runKey(p, t), seedRuns(p, t));
 }
-export function advanceRuns(p, t) {
+export function advanceRuns(p, t, now=Date.now()) {
     let changed = false;
     const rows = runs(p, t);
     for (const r of rows) {
-        if (r.status === 'STOPPING' && Date.now() - Date.parse(r.stopRequestedAt) > 1600) {
+        if (r.status === 'STOPPING' && now - Date.parse(r.stopRequestedAt) > 1600) {
             r.status = 'STOPPED';
             r.end = new Date(Date.parse(r.stopRequestedAt) + 1600).toISOString();
             r.objects.forEach((o) => {
@@ -300,16 +314,13 @@ export function advanceRuns(p, t) {
             changed = true;
         }
         if (r.demoStarted && r.status === 'RUNNING' && r.phase !== 'SYNCING') {
-            const elapsed = Date.now() - Date.parse(r.start), phase = elapsed > 6000 ? 'SYNCING' : elapsed > 1800 ? 'INITIALIZING' : 'CHECK';
+            const elapsed = now - Date.parse(r.start), phase = elapsed > 6000 ? 'SYNCING' : elapsed > 1800 ? 'INITIALIZING' : 'CHECK';
             if (phase !== r.phase) {
                 r.phase = phase;
+                if(phase==='SYNCING')r.syncStartedAt=new Date(Date.parse(r.start)+6000).toISOString();
                 r.objects.forEach((o) => {
                     o.state = phase === 'SYNCING' ? '同步中' : '初始化中';
-                    if (phase === 'SYNCING') {
-                        o.version = 1;
-                        o.rows = 12846;
-                        o.publishedAt = new Date(Date.parse(r.start) + 6000).toISOString();
-                    }
+
                 });
                 changed = true;
             }
@@ -319,20 +330,23 @@ export function advanceRuns(p, t) {
         write(runKey(p, t), rows);
     return rows;
 }
-export function startIngest(p, task) {
+export function startIngest(p, task, now=Date.now()) {
     assertWrite(p.name);
+    if(task.method){const connection=connections(p).find(c=>c.name===task.connection);if(!connection)throw Error('来源连接不存在');validateCollection(task,connection,tasks(p));validateOutputs(task,datasets(p),task.id);}
     if (!task.published || task.mode !== 'continuous')
         throw Error('当前原型仅支持已发布的持续采集任务运行');
+    validatePublicationSeconds(task.versionIntervalSeconds);
     const rows = runs(p.name, task.id);
     if (rows.some(r => ['RUNNING', 'STOPPING'].includes(r.status)))
         throw Error('该任务已有运行，不能重复启动');
     const run = {
-        id: 'RUN-DEMO-' + Date.now().toString(36).toUpperCase(),
+        id: 'RUN-DEMO-' + uid(),
         status: 'RUNNING',
         trigger: 'MANUAL',
         actor: person(actor()),
-        start: new Date().toISOString(),
+        start: new Date(now).toISOString(),
         end: null,
+        versionIntervalSeconds:publicationSeconds(task),publications:[],
         phase: 'CHECK',
         demoStarted: true,
         objects: task.tables.map((t) => ({

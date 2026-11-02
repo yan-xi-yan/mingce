@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {runBody,sparkMetrics} from '../appdashboard-app/assets/js/run-details.js';
+import {sparkDetailsBody,sparkTabNames,sparkTimeDomain,taskQuantiles} from '../appdashboard-app/assets/js/spark-details.js';
+import {detailURL,detailRoute,resourceView} from '../appdashboard-app/assets/js/resource-navigation.js';
+globalThis.location={search:'?project=供应链分析',origin:'http://127.0.0.1:3004',pathname:'/'};
+const {runs}=JSON.parse(readFileSync(new URL('../appdashboard-app/assets/data/real-runs.json',import.meta.url)));
+const crud=runs.find(r=>r.id.endsWith('-crud')),report=runBody(crud),spark=sparkDetailsBody(crud);
+assert.match(report,/Build info/);assert.match(report,/Build progress/);assert.match(report,/detail=spark/);
+assert.doesNotMatch(report,/spark-tab-overview|Spark properties|Query plan/);
+assert.match(report,/5 个|2 个已记录输出/); // One execution can commit several snapshots to two outputs.
+for(const label of sparkTabNames)assert.ok(spark.includes('>'+label+'</button>'));
+assert.equal((spark.match(/role="tab"/g)||[]).length,7);
+assert.match(spark,/stage-detail-/);assert.match(spark,/data-action="spark-stage"/);
+assert.match(spark,/aria-label="Spark Stage 依赖图"/);
+assert.match(spark,/disabled title="应用已结束/);
+assert.doesNotMatch(spark,/Snapshot<\/button>[^]*data-action="snapshot"/);
+const staged={durationMs:100000,taskRuntimeMs:16000,stages:[{startMs:3000,durationMs:3000},{startMs:7000,durationMs:4000}]};
+assert.equal(sparkMetrics(staged).durationMs,8000);assert.equal(sparkMetrics(staged).parallelism,'2.00 ×');
+assert.equal(sparkMetrics({...staged,stages:[{startMs:3000,durationMs:null}]}).durationMs,null);
+assert.deepEqual(taskQuantiles([{durationMs:1},{durationMs:2},{durationMs:3},{durationMs:4},{durationMs:100}]),[1,2,3,4,100]);
+assert.deepEqual(sparkTimeDomain({stages:[{startMs:2000,durationMs:3000}],concurrency:[{timeMs:2500,activeTasks:1},{timeMs:4000,activeTasks:0}]}),{from:2000,to:5000});
+for(const run of runs){const html=sparkDetailsBody(run);assert.doesNotMatch(html,/(?:width|height|x|y)="(?:NaN|Infinity)|NaN%/);}
+assert.ok(crud.spark.stages.some(s=>s.parentIds?.length));
+assert.equal(resourceView('spark'),'runs');
+const url=new URL(detailURL('spark',crud.id,{taskId:crud.taskId,tab:'graph'}),location.origin);location.search=url.search;
+assert.deepEqual(detailRoute(),{kind:'spark',id:crud.id,options:{taskId:crud.taskId,tab:'graph',version:undefined}});
+const xss=sparkDetailsBody({...crud,spark:{...crud.spark,config:{password:'secret-value'},queryPlan:'<script>',stages:[]}});
+assert.doesNotMatch(xss,/<script>|secret-value/);
+assert.doesNotMatch(runBody({...crud,spark:null}),/data-kind="spark"/);
+console.log('PASS two-level routes, seven Spark tabs, stage dependencies, task distributions, shared axes, compute-span parallelism, ended diagnostics, empty data and safe rendering.');

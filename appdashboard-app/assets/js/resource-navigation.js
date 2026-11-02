@@ -1,7 +1,7 @@
 import {escape as e} from './html.js';
 
 export const resourceKind=kind=>({task:'tasks',flow:'flows'}[kind]||kind);
-export const resourceView=kind=>({connection:'connections',tasks:'tasks',dataset:'datasets',code:'code',flows:'flows',plan:'plans',run:'runs'}[resourceKind(kind)]);
+export const resourceView=kind=>({connection:'connections',tasks:'tasks',dataset:'datasets',code:'code',flows:'flows',plan:'plans',run:'runs',spark:'runs'}[resourceKind(kind)]);
 const clearDetail=params=>{for(const key of ['detail','id','tab','version','task','connection','connectionTab'])params.delete(key);};
 export function listURL(view,project=new URLSearchParams(location.search).get('project')){
  const params=new URLSearchParams(location.search);clearDetail(params);

@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {loadRealRuns,realRuns,realRunsStatus} from '../appdashboard-app/assets/js/real-runs.js';
+import {runBody,sparkMetrics} from '../appdashboard-app/assets/js/run-details.js';
+globalThis.location={search:'',href:'http://127.0.0.1:3004/',origin:'http://127.0.0.1:3004',pathname:'/'};
+// Real evidence must not be written to or executed by the local demo engine.
+globalThis.sessionStorage={getItem(){throw Error('Unexpected demo storage read');},setItem(){throw Error('Unexpected demo storage write');}};
+const catalog=JSON.parse(readFileSync(new URL('../appdashboard-app/assets/data/real-runs.json',import.meta.url),'utf8'));
+const p={name:'供应链分析'};
+await loadRealRuns(async()=>({ok:true,json:async()=>structuredClone(catalog)}));
+assert.equal(realRuns(p).length,9);
+assert.equal(realRuns({name:'销售数据工程'}).length,0);
+assert.equal(realRuns({...p,organizationId:'operations'}).length,0);
+const crud=realRuns(p).find(r=>r.id.endsWith('-crud'));
+assert.equal(crud.spark.jobs.length,46);
+assert.equal(crud.spark.stages.length,73);
+assert.equal(crud.spark.sqlExecutions.length,20);
+assert.equal(crud.spark.stages.reduce((n,s)=>n+s.tasks.length,0),56);
+assert.equal(crud.icebergSnapshots.length,5);
+assert.ok(crud.icebergSnapshots.some(s=>s.snapshotId==='6244345155261170716'));
+assert.equal(crud.spark.taskRuntimeMs,crud.spark.stages.flatMap(s=>s.tasks).reduce((n,t)=>n+t.durationMs,0));
+assert.equal(crud.spark.concurrency.at(-1).activeTasks,0);
+const failed=realRuns(p).find(r=>r.id.endsWith('-commit-then-fail'));
+assert.equal(failed.status,'FAILED');assert.equal(failed.icebergSnapshots.length,1);
+assert.equal(realRuns(p).find(r=>r.id.endsWith('-cancel')).status,'CANCELLED');
+for(const run of realRuns(p)){
+ const html=runBody(run);
+ assert.match(html,/真实实验 · 历史快照/);
+ assert.doesNotMatch(html,/开始本地模拟执行|演示运行完成|PRODUCTION · 正式|data-action="run"|任务配置<\/a>|NaN%|Infinity%/);
+ assert.ok(run.icebergSnapshots.every(s=>typeof s.snapshotId==='string'));
+ assert.equal(run.start,new Date(run.start).getTime());
+ assert.ok(run.spark.executors.every(x=>x.active===false));
+ assert.ok(run.spark.stages.filter(s=>Number.isFinite(s.startMs)).every(s=>Array.isArray(s.parentIds)));
+}
+const html=runBody(failed);
+assert.match(html,/700109659189505190/);
+assert.match(html,/已提交快照仍保留/);
+assert.equal(sparkMetrics({concurrencyComplete:false,stages:[{taskRuntimeMs:2}]}).taskRuntimeMs,null);
+assert.doesNotMatch(runBody({...crud,provenance:{...crud.provenance,codeHash:'<script>alert(1)</script>'}}),/<script>/);
+await loadRealRuns(async()=>{throw new Error('offline');});
+assert.equal(realRuns(p).length,0);assert.match(realRunsStatus(p).error,/加载失败/);
+await loadRealRuns(async()=>({ok:true,json:async()=>catalog}));assert.equal(realRuns(p).length,9);
+console.log('PASS real evidence, exact snapshot IDs, failure-with-commit, metric totals, project isolation, read-only rendering, no fabricated timings and load failure recovery.');

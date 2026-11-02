@@ -1,4 +1,3 @@
-import {datasetLineage} from './dataset-lineage.js';
 import {resourceLink} from './resource-navigation.js';
 export {resourceLink} from './resource-navigation.js';
 import {escape as e,icon,badge,button,alert,table,pickerControl} from './html.js';
@@ -10,24 +9,8 @@ export const statusBadge=status=>badge(runLabels[status]||status,['SUCCESS','SUC
 export function tabs(items,prefix='resource'){
  return `<ul class="nav nav-tabs mb-4" role="tablist">${items.map(([id,label],i)=>`<li class="nav-item" role="presentation"><button class="nav-link ${i?'':'active'}" id="${prefix==='dataset'?'':prefix+'-'}tab-${id}" data-detail-tab="${e(id)}" data-bs-toggle="tab" data-bs-target="#${prefix==='dataset'?'':prefix+'-'}pane-${id}" type="button" role="tab" aria-controls="${prefix==='dataset'?'':prefix+'-'}pane-${id}" aria-selected="${!i}">${label}</button></li>`).join('')}</ul><div class="tab-content">${items.map(([id,,body],i)=>`<div class="tab-pane fade ${i?'':'show active'}" id="${prefix==='dataset'?'':prefix+'-'}pane-${id}" role="tabpanel" aria-labelledby="${prefix==='dataset'?'':prefix+'-'}tab-${id}">${body}</div>`).join('')}</div>`;
 }
-export function datasetBody(record,{producer,downstream=[],connection,allDatasets=[],version}={}){
- const versions=record.versions?.length?record.versions:record.versionNumber!=null?[{version:record.versionNumber,time:record.committedAt,rows:record.rowCount??record.rows?.length,source:record.source,schema:record.schema,data:record.rows}]:[];
- const chosen=version==null?null:versions.find(v=>String(v.version)===String(version));
- const current=version==null||String(version)===String(record.versionNumber);
- const schema=chosen?.schema??(current?record.schema:[])??[],data=chosen?.data??(current?record.rows:undefined);
- const waiting=record.state==='待录入'?'尚未录入数据':record.state==='待产出'?'等待任务首次成功产出数据':'预览数据暂不可用';
- const columns=schema.map(f=>({title:f.name+' · '+f.type,render:r=>e(r[f.name]===null?'NULL':r[f.name]===''?'（空字符串）':r[f.name])}));
- const preview=Array.isArray(data)&&(versions.length>0||record.state==='可用')?table(columns,data.slice(0,20).map(row=>Object.fromEntries(schema.map((f,i)=>[f.name,Array.isArray(row)?row[i]:row[f.name]]))),{search:false,id:'data-preview',empty:'当前版本无记录'}):alert(waiting,'secondary');
- const lineage=datasetLineage(record,{producer,downstream,connection,allDatasets});
- return `<div class="d-flex align-items-center gap-3 mb-3">${icon('table')}<h3 class="h5 mb-0">${e(record.name)}</h3>${badge(record.state||'状态待确认',record.state==='可用'?'success':'warning')}${(version??record.versionNumber)!=null?badge('v'+(version??record.versionNumber),'primary'):''}${version!=null&&!current?badge('历史版本','secondary'):''}</div><p class="text-muted">${e(record.description||'')} · ${record.group==='processed'?'加工数据':'原始数据'} · ${e(record.method||'来源待确认')}</p>`+tabs([
-  ['data','数据预览',`<p class="small text-muted">${version!=null?'查看版本 '+e(version):record.versionNumber!=null?'当前版本 '+e(record.versionNumber):'尚无已生成的数据版本'} · 预览最多 20 行</p>${preview}`],
-  ['schema','字段结构',table([{key:'name',title:'字段名称'},{key:'type',title:'字段类型'}],schema,{id:'schema-preview',search:true,empty:'尚无可用字段结构'})],
-  ['versions','版本记录',table([{title:'版本',render:v=>'v'+e(v.version)},{title:'生成时间（北京时间）',render:v=>e(formatTime(v.time))},{key:'rows',title:'数据行数'},{title:'字段数',render:v=>v.schema?.length??'—'},{key:'source',title:'生产来源'},{title:'操作',render:v=>button('查看数据','dataset-version',{id:record.id,variant:'link',extra:`data-version="${e(v.version)}"`})}],versions,{search:false,id:'version-preview',empty:'尚无已生成的数据版本'})],
-  ['lineage','来源与去向',lineage]
- ],'dataset');
-}
 export function jobHistory(rows){return '<form class="row g-3 mb-3" id="run-filters"><div class="col-auto" style="width: 180px;"><label for="run-status" class="form-label">运行状态</label><select class="form-select" data-choices data-choices-sort="false" id="run-status"><option value="">全部</option>'+Object.entries(runLabels).filter(([key])=>key!=='SUCCESS').map(([key,label])=>'<option value="'+label+'">'+label+'</option>').join('')+'</select></div><div class="col-auto" style="width: 180px;"><label for="run-trigger" class="form-label">触发方式</label><select class="form-select" data-choices data-choices-sort="false" id="run-trigger"><option value="">全部</option><option>手动启动</option><option>调度触发</option></select></div><div class="col-auto" style="width: 210px;"><label for="run-from" class="form-label">开始日期</label>'+pickerControl({id:'run-from'})+'</div><div class="col-auto" style="width: 210px;"><label for="run-to" class="form-label">结束日期</label>'+pickerControl({id:'run-to'})+'</div><div class="col-auto align-self-end d-flex gap-2"><button class="btn btn-primary" type="submit">查询</button><button class="btn btn-outline-secondary" type="button" data-action="reset-run-filters">重置</button></div></form><div id="run-filter-error" role="alert"></div>'+table([
- {title:'运行编号',render:r=>button(r.id,'inspect',{kind:'run',id:r.id,variant:'link',extra:'data-task="'+e(r.taskId)+'"'})},
+ {title:'运行编号',render:r=>button(r.id,'inspect',{kind:'run',id:r.id,variant:'link',extra:'data-task="'+e(r.taskId)+'"'})+' '+badge(r.runMode==='TEST'?'测试':'正式',r.runMode==='TEST'?'info':'secondary')},
  {title:'触发方式',render:r=>e(r.planId||r.trigger==='SCHEDULE'?'调度触发':'手动启动')},
  {title:'开始时间（北京时间）',render:r=>'<time datetime="'+e(new Date(r.start).toISOString())+'">'+e(formatTime(r.start))+'</time>'},
  {title:'结束时间',render:r=>e(formatTime(r.end))},

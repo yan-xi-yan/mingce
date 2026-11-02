@@ -10,7 +10,7 @@ const definitions={
  tasks:[field('mode','采集方式',r=>r.mode,{full:'全量读取',incremental:'递增字段读取',continuous:'持续变更采集'}),field('connection','来源连接',r=>r.connection),field('published','配置状态',r=>r.published?(r.mode==='continuous'?'已保存':'已发布'):'草稿')],
  code:[field('configStatus','配置状态',r=>r.configStatus||'DRAFT',{DRAFT:'草稿',READY:'已就绪'}),field('updatedBy','修改人',r=>r.updatedBy)],
  plans:[field('mode','触发方式',r=>r.mode,{event:'上游更新触发',cron:'定时触发',time:'定时触发',schedule:'定时触发'}),field('enabled','计划状态',r=>r.enabled?'enabled':'disabled',{enabled:'已启用',disabled:'停用'})],
- runs:[field('type','任务类型',r=>r.type,{batch:'批次采集',continuous:'持续采集',code:'代码任务',flow:'转换流程'}),field('status','运行状态',r=>r.status==='SUCCESS'?'SUCCEEDED':r.status,{QUEUED:'排队中',RUNNING:'运行中',SUCCEEDED:'成功',FAILED:'失败',PARTIAL_FAILED:'部分失败',STOPPING:'停止中',STOPPED:'已停止',CANCELLED:'已取消'})]
+ runs:[field('runMode','运行模式',r=>r.runMode||'PRODUCTION',{LAB:'真实实验',TEST:'测试 · 演示',PRODUCTION:'正式 · 演示'}),field('type','任务类型',r=>r.type,{batch:'批次采集',continuous:'持续采集',code:'代码任务',flow:'转换流程'}),field('status','运行状态',r=>r.status==='SUCCESS'?'SUCCEEDED':r.status,{QUEUED:'排队中',RUNNING:'运行中',SUCCEEDED:'成功',FAILED:'失败',PARTIAL_FAILED:'部分失败',STOPPING:'停止中',STOPPED:'已停止',CANCELLED:'已取消'})]
 };
 function state(key){if(!states.has(key))states.set(key,{draft:{},applied:{}});return states.get(key);}
 export function filterSnapshot(form){return form?{key:form.dataset.resourceFilters,...structuredClone(state(form.dataset.resourceFilters))}:null;}

@@ -1,9 +1,14 @@
+import {normalizeCDC,validateSelection,queryMode} from './collection-selection.js';
+import {readSourceSchema} from './schema-evolution.js';
+import {sourceCatalog} from './source-catalog.js';
+import {collectionDefaults,collectionMode,tableRule,validateOutputs,validateCollection,savedCollection,collectionRulesForm,collectionMethodForm} from './collection-config.js';
+import {activeOrganization} from './domain/organizations.js';
 import {validateCodeBindings,codeBindingIssue,codeOutputs,inputReference} from './code-bindings.js';
 import {SourcePicker} from './source-picker.js';
 import {databaseTypes,databaseType} from './database-types.js';
 import {downloadCodeTemplate} from './code-template.js';
 import {read,write,key,projectKey,connections,tasks,uid,engine,catalog,modeNames} from './domain/store.js';
-import {actor,users,cap,permissions,permissionKey,canCreate,assertWrite,datasets,saveDataset,codes,saveCode,flows,readPlans,targets,dataTypes} from './domain/domain.js';
+import {actor,organizationUsers,cap,permissions,permissionKey,canCreate,assertWrite,datasets,saveDataset,codes,saveCode,flows,readPlans,targets,dataTypes} from './domain/domain.js';
 import {armPlan} from './domain/execution-runtime.js';
 import {csv,value as typedValue} from './domain/import-rules.js';
 import {escape as e,icon,badge,button,alert,field,input,select,textarea,checkbox,table} from './html.js';
@@ -15,17 +20,19 @@ import {mountDatePickers,disposeDatePickers} from './date-pickers.js';
 
 // A native HTML form controller; there is no virtual DOM or UI framework.
 export class Editor {
- constructor(host,{kind,record,project,projects,done}){
-  this.host=host;this.kind=kind;this.record=record?.id?record:undefined;this.project=project;this.projects=projects;this.done=done;this.dirty=false;this.step=0;this.tested=false;this.busy=false;this.error='';this.imported=null;this.disposed=false;this.fileRequest=0;
+ constructor(host,{kind,record,project,projects,done,packageOnly=false}){
+  this.packageOnly=packageOnly&&kind==='code'&&!!record?.id;this.host=host;this.kind=kind;this.record=record?.id?record:undefined;this.project=project;this.projects=projects;this.done=done;this.dirty=false;this.step=0;this.tested=false;this.busy=false;this.error='';this.imported=null;this.disposed=false;this.fileRequest=0;
   const r=record||{},p=project||{name:'',empty:true};
   this.f=structuredClone({name:r.name||'',description:r.description||'',host:r.host||'',connectorType:databaseType(r),port:r.port||databaseTypes[databaseType(r)]?.port||'3306',database:r.database||'',user:r.user||'',password:'',connection:r.connection||connections(p)[0]?.name||'',tables:r.tables||[],fields:r.fields||{},outputs:r.outputs||{},mode:r.mode||'full',incrementalField:r.incrementalField||'',inputs:r.inputs||[],output:r.output||'',outputMode:r.outputMode||'new',outputId:r.outputId||'',replaceAcknowledged:r.replaceAcknowledged||false,fileName:r.fileName||'',packageId:r.packageId||'',task:r.task||'',planMode:r.mode||'time',watch:r.watch||[],combo:r.combo||'any',member:r.id||'',role:r.role||'developer',download:r.download||false,datasetMode:'manual',group:'raw',csvHeader:'header',schema:'id:BIGINT\nname:STRING',rows:'1,示例',rule:r.rule||engine.defaults('08:00')});
+  if(kind==='task')Object.assign(this.f,collectionDefaults(r,connections(p).find(c=>c.name===this.f.connection)));
   if(kind==='plan')for(const name of ['start','end','once'])this.f.rule[name]=(this.f.rule[name]||'').replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):\d{2}$/, '$1');
   this.f.outputBindings=kind==='code'?(codeOutputs(r).length?structuredClone(codeOutputs(r)):[{name:'',mode:'new',datasetId:'',reference:'output_1',replaceAcknowledged:false}]):[];
   this.f.inputReferences=structuredClone(r.inputReferences||{});this.f.inputs.forEach((id,i)=>{this.f.inputReferences[id]??='input_'+(i+1);});
+  if(kind==='connection'){this.step=this.record?1:0;if(!this.record)this.f.connectorType='';}
   this.newCodeOutput=this.f.outputMode==='new'?this.f.output:'';
-  this.f.packageSize=r.packageSize;this.codeBindingSignature=this.bindingSignature();
+  this.f.packageSize=r.packageSize;this.f.packageNote='';this.codeBindingSignature=this.bindingSignature();
   this.uploadBusy=false;this.uploadError='';this.uploadNote='';this.fileSize=r.packageSize;this.unbindUploads=bindFileUploads(host);
-  this.inputHandler=event=>this.onInput(event);this.changeHandler=event=>this.onChange(event);this.clickHandler=event=>this.onClick(event);this.submitHandler=event=>{event.preventDefault();this.check(()=>{this.sync();if(this.kind==='task'&&this.step<3){this.taskValid(this.step);this.moveStep(this.step+1);}else this.save();});};
+  this.inputHandler=event=>this.onInput(event);this.changeHandler=event=>this.onChange(event);this.clickHandler=event=>this.onClick(event);this.submitHandler=event=>{event.preventDefault();this.check(()=>{this.sync();if(this.kind==='connection'&&this.step===0){if(!databaseTypes[this.f.connectorType])throw Error('请选择一个 Source 类型');this.moveStep(1);}else if(this.kind==='task'&&this.step<2){this.taskValid(this.step);this.moveStep(this.step+1);}else this.save();});};
   this.footer=document.querySelector('#workspace-modal-footer');this.footer.addEventListener('click',this.clickHandler);
   host.addEventListener('input',this.inputHandler);host.addEventListener('change',this.changeHandler);host.addEventListener('click',this.clickHandler);host.addEventListener('submit',this.submitHandler);this.render();
  }
@@ -39,10 +46,16 @@ export class Editor {
    else if(name.startsWith('coderef.'))this.f.inputReferences[name.slice(8)]=element.value;
    else if(name.startsWith('rule.'))this.f.rule[name.slice(5)]=element.dataset.picker==='datetime'?element.value.trim().replace(' ','T'):element.value;
    else if(name==='scheduleTime')continue;
+   else if(name.startsWith('jdbc:'))this.f.jdbc[name.slice(5)]=element.value;
+   else if(name.startsWith('cdc:'))this.f.cdc[name.slice(4)]=element.value;
+   else if(name.startsWith('cursor:'))tableRule(this.f,name.slice(7)).cursor=element.value;
+   else if(name.startsWith('initial:'))tableRule(this.f,name.slice(8)).initialValue=element.value;
+   else if(name.startsWith('queryMode:'))tableRule(this.f,name.slice(10)).queryMode=element.value;
+   else if(name.startsWith('sql:'))tableRule(this.f,name.slice(4)).sql=element.value;
    else if(name.startsWith('output:'))this.f.outputs[name.slice(7)]=element.value;
    else this.f[name]=element.value;
   }
-  if(this.kind==='code'){if(form.querySelector('[name="inputs"]'))this.f.inputs=data.getAll('inputs');for(const [i,o]of this.f.outputBindings.entries()){o.replaceAcknowledged=data.has('codeack.'+i);}this.f.output=this.f.outputBindings[0]?.name||'';}
+  if(this.kind==='code'){if(form.querySelector('[name="inputs"]'))this.f.inputs=data.getAll('inputs');if(!this.packageOnly)for(const [i,o]of this.f.outputBindings.entries()){o.replaceAcknowledged=data.has('codeack.'+i);}this.f.output=this.f.outputBindings[0]?.name||'';}
   if(form.querySelector('[name="replaceAcknowledged"]:not(:disabled)'))this.f.replaceAcknowledged=data.has('replaceAcknowledged');
   for(const group of ['inputs','tables','watch'])if(form.querySelector(`[name="${group}"]:not(:disabled)`))this.f[group]=data.getAll(group);
   for(const t of this.f.tables)if(form.querySelector(`[name="fields:${t}"]`))this.f.fields[t]=data.getAll('fields:'+t);
@@ -50,18 +63,24 @@ export class Editor {
   if(form.querySelector('[name="download"]'))this.f.download=data.has('download');
   if(form.querySelector('[name="scheduleTime"]'))this.f.rule.times=data.getAll('scheduleTime').join(',');
  }
- onInput(event){if(['connectorType','outputMode'].includes(event.target.name))return;if(['file','checkbox','radio'].includes(event.target.type)||!event.target.name)return;this.dirty=true;this.sync();if(['host','port','database','user','password'].includes(event.target.name)){this.tested=false;const test=this.host.querySelector('[data-form-action="test"]');if(test)test.textContent='测试连接（演示）';}if(this.kind==='code')this.updateCodeControls();if(this.kind==='plan')this.updatePreview();}
+ onInput(event){if(['connectorType','outputMode'].includes(event.target.name))return;if(['file','checkbox','radio'].includes(event.target.type)||!event.target.name)return;this.dirty=true;this.sync();if(['host','port','database','user','password'].includes(event.target.name)){this.tested=false;const test=this.footer.querySelector('[data-form-action="test"]');if(test)test.textContent='测试连接（演示）';const status=this.host.querySelector('[role="status"]');if(status){status.className='small text-muted';status.textContent='配置已变更，请重新测试连接';}}if(this.kind==='code')this.updateCodeControls();if(this.kind==='plan')this.updatePreview();}
  onChange(event){
   const target=event.target;if(!target.name)return;this.dirty=true;
   if(target.type==='file'){this.readFile(target);return;}
-  const oldTables=[...this.f.tables],oldType=this.f.connectorType;this.sync();
-  if(target.name==='connectorType'){if(!this.f.port||this.f.port===databaseTypes[oldType]?.port)this.f.port=databaseTypes[this.f.connectorType]?.port||'';this.tested=false;this.render();return;}
+  const oldMethod=this.f.method,oldTables=[...this.f.tables],oldType=this.f.connectorType;this.sync();
+  if(target.name==='connectorType'){if(!oldType||!this.f.port||this.f.port===databaseTypes[oldType]?.port)this.f.port=databaseTypes[this.f.connectorType]?.port||'';if(oldType!==this.f.connectorType)this.tested=false;this.render();return;}
   if(this.kind==='code'){
    if(target.name.startsWith('codeout.')){const [,index,property]=target.name.split('.'),o=this.f.outputBindings[+index];if(property==='mode'){o.name='';o.datasetId='';o.replaceAcknowledged=false;}if(property==='datasetId'){o.name=datasets(this.project).find(data=>data.id===o.datasetId)?.name||'';o.replaceAcknowledged=false;}if(['mode','datasetId'].includes(property)){this.render();return;}}
    if(target.name==='inputs'){const used=new Set([...Object.values(this.f.inputReferences),...this.f.outputBindings.map(o=>o.reference)]);for(const id of this.f.inputs)if(!Object.hasOwn(this.f.inputReferences,id)){let n=1;while(used.has('input_'+n))n++;this.f.inputReferences[id]='input_'+n;used.add('input_'+n);}this.render();return;}this.updateCodeControls();
   }
   if(target.name==='tables'){for(const table of this.f.tables)if(!oldTables.includes(table)){this.f.fields[table]=[...catalog[table]];this.f.outputs[table]=table+'_raw';}}
-  if(this.kind==='task'&&target.name==='mode')this.sourcePicker?.ensureRequired();
+  if(this.kind==='task'){
+   if(target.name==='connection'){this.f.tables=[];this.f.fields={};this.f.outputs={};Object.assign(this.f,collectionDefaults({method:this.f.method,cdc:{'topic.prefix':this.f.cdc['topic.prefix']}},connections(this.project).find(c=>c.name===this.f.connection)));this.sourcePicker=undefined;this.render();return;}
+   if(target.name==='method'&&oldMethod!==this.f.method){if(this.f.method==='CDC')this.jdbcFieldDraft=structuredClone(this.f.fields);else if(this.jdbcFieldDraft)this.f.fields=structuredClone(this.jdbcFieldDraft);}
+   if(target.name==='jdbc:readMode')this.f.jdbc.writeMode=this.f.jdbc.readMode==='incremental'?'append':'snapshot';
+   this.f.mode=collectionMode(this.f);normalizeCDC(this.f);this.sourcePicker?.ensureRequired();
+   if(['method','jdbc:readMode','jdbc:writeMode','cdc:snapshot.mode'].includes(target.name)||target.name.startsWith('cursor:')){this.render();return;}
+  }
   if(target.name==='task'){this.f.watch=[];if(targets(this.project).find(t=>t.id===this.f.task)?.type==='batch')this.f.planMode='time';}
   if(target.name==='rule.kind'&&['second','minute','hour'].includes(this.f.rule.kind)&&!this.f.rule.start)this.f.rule.start=engine.format(Date.now()+60000,this.f.rule.zone).slice(0,16).replace(' ','T');
   if(target.name==='csvHeader'&&this.csvRaw!=null){this.parseCSV();return;}
@@ -76,6 +95,7 @@ export class Editor {
   try{
    if(target.files.length!==1)throw Error('每次只能选择一个文件，请重新选择。');
    if(target.name==='codeFile'){
+    if(!this.packageOnly)throw Error('请在任务详情的开发与代码包页面上传');
     if(!/\.zip$/i.test(file.name)||file.size===0||file.size>50*1024*1024)throw Error('请选择非空且不超过 50 MB 的 ZIP 文件');
     const packageId=await storePackage(file,this.project.name);if(this.disposed||request!==this.fileRequest)return;this.f.packageId=packageId;this.f.fileName=file.name;this.fileSize=file.size;this.f.packageSize=file.size;
    }else{
@@ -108,19 +128,25 @@ export class Editor {
  importPreview(){const data=this.imported;if(!data)return '';
   return table([{title:'字段名称',render:(f)=>input('字段名称 '+(data.schema.indexOf(f)+1),'import.name.'+data.schema.indexOf(f),f.name,{extra:'maxlength="100"'})},{title:'字段类型',render:(f)=>select('字段类型 '+(data.schema.indexOf(f)+1),'import.type.'+data.schema.indexOf(f),f.type,dataTypes.map(value=>({value,label:value})))},{title:'首条数据',render:f=>e(data.rows[0]?.[data.schema.indexOf(f)]??'—')}],data.schema,{search:false,id:'import-fields'})+alert('已解析 '+data.rows.length+' 行、'+data.schema.length+' 个字段；请确认字段名称和类型。')+table(data.schema.map((f,i)=>({title:f.name||'未命名字段',render:row=>e(row[i])})),data.rows.slice(0,20),{search:false,id:'import-preview',empty:'当前文件仅包含字段结构，没有数据行。'});
  }
- onClick(event){const target=event.target.closest('[data-form-action]');if(!target)return;const command=target.dataset.formAction;
+ onClick(event){const target=event.target.closest('[data-form-action]');if(!target||target.disabled||this.busy)return;const command=target.dataset.formAction;
   if(command==='add-time'||command==='remove-time'){this.sync();const times=this.f.rule.times.split(',');if(command==='add-time')times.push('');else times.splice(+target.dataset.index,1);this.f.rule.times=times.join(',');this.dirty=true;this.render();if(command==='add-time'){const added=[...this.host.querySelectorAll('[name="scheduleTime"]')].at(-1);added?.scrollIntoView({block:'nearest'});added?.focus({preventScroll:true});}}
   if(command==='remove-file'){this.sync();this.fileRequest++;this.uploadBusy=false;this.loadingCode=false;this.uploadError='';this.uploadNote='';this.error='';this.fileSize=undefined;this.f.fileName='';if(target.dataset.fileName==='codeFile'){this.f.packageId='';this.f.packageSize=undefined;}else{this.imported=null;this.csvRaw=null;}this.dirty=true;this.render();this.host.querySelector('[data-upload-zone]')?.focus({preventScroll:true});}
   if(command==='add-code-output'){this.sync();const used=new Set([...Object.values(this.f.inputReferences),...this.f.outputBindings.map(o=>o.reference)]);let n=1;while(used.has('output_'+n))n++;this.f.outputBindings.push({name:'',mode:'new',datasetId:'',reference:'output_'+n,replaceAcknowledged:false});this.dirty=true;this.render();}
   if(command==='remove-code-output'){this.sync();this.f.outputBindings.splice(+target.dataset.index,1);this.dirty=true;this.render();}
   if(command==='download-template')this.check(()=>{this.sync();downloadCodeTemplate(this.project,{...this.f,id:this.record?.id});});
   if(command==='back'){this.sync();this.moveStep(this.step-1);}
+  if(command==='change-source'){this.sync();this.moveStep(0);}
   if(command==='test')this.check(()=>{this.sync();this.connectionValid();this.busy=true;this.render();this.timer=setTimeout(()=>{if(this.disposed)return;this.busy=false;this.tested=true;this.render();},400);});
  }
  moveStep(step){this.step=step;this.error='';this.render();this.host.scrollTop=0;const heading=this.host.querySelector('.wizard-step.active');heading?.setAttribute('tabindex','-1');heading?.focus({preventScroll:true});}
  connectionChanged(){const f=this.f,r=this.record;return !r||f.connectorType!==databaseType(r)||['host','port','database','user'].some(key=>String(f[key]).trim()!==String(r[key]||'').trim())||!!f.password;}
- connectionValid(){const f=this.f;if(!databaseTypes[f.connectorType])throw Error('请选择数据库类型');if(!f.host.trim()||!f.database.trim()||!f.user.trim()||!this.record&&!f.password)throw Error('请完整填写连接地址、数据库、用户名和密码');if(!/^\d+$/.test(f.port)||Number(f.port)<1||Number(f.port)>65535)throw Error('端口应为 1～65535 的整数');}
- taskValid(stage){const f=this.f;if(stage>=0&&!connections(this.project).some(c=>c.name===f.connection))throw Error('请选择当前项目内的连接');if(stage>=1&&(!f.tables.length||f.tables.some(t=>!f.fields[t]?.length)))throw Error('至少选择一个源表，并为每个源表选择字段');if(stage>=2&&f.mode==='incremental'&&(!f.incrementalField||f.tables.some(t=>!f.fields[t]?.includes(f.incrementalField))))throw Error('递增字段必须存在于每个已选源表和采集字段中');}
+ connectionValid(){const f=this.f;if(!databaseTypes[f.connectorType])throw Error('请选择数据库类型');if(!f.host.trim()||!f.database.trim()||!f.user.trim()||(!this.record||f.connectorType!==databaseType(this.record))&&!f.password)throw Error('请完整填写连接地址、'+(databaseTypes[f.connectorType]?.databaseLabel||'数据库')+'、用户名和密码');if(!/^\d+$/.test(f.port)||Number(f.port)<1||Number(f.port)>65535)throw Error('端口应为 1～65535 的整数');}
+ taskValid(stage){const f=this.f,connection=connections(this.project).find(c=>c.name===f.connection);
+  if(!f.name.trim()||f.name.trim().length>100)throw Error('任务名称需为 1～100 个字符');
+  if(!connection)throw Error('请选择当前项目内的连接');
+  if(stage>=1){validateSelection(f);validateOutputs(f,datasets(this.project),this.record?.id);}
+  if(stage>=2){for(const table of f.tables){const source=readSourceSchema(this.project,{connection,table});if(f.sourceSchemas[table]?.fingerprint&&f.sourceSchemas[table].fingerprint!==source.fingerprint)throw Error(table+'：源表结构已变化，请返回上一步重新确认');f.sourceSchemas[table]=source;}normalizeCDC(f);validateCollection({...f,id:this.record?.id},connection,tasks(this.project));}
+ }
  same(rows){if(rows.some(x=>x.id!==this.record?.id&&x.name===this.f.name.trim()))throw Error('当前项目已有同名记录');}
  save(){
   if(this.uploadBusy)throw Error('文件正在读取，请稍候。');
@@ -129,7 +155,7 @@ export class Editor {
   if(!f.name.trim()||f.name.trim().length>100)throw Error('名称需为 1～100 个字符');
   if(kind==='project'){
    if(!canCreate())throw Error('当前身份不可创建项目');if(f.name.trim().length<2||f.name.trim().length>50)throw Error('项目名称需为 2～50 个字符');if(read(projectKey,this.projects).some(x=>x.name===f.name.trim()))throw Error('项目名称已存在');
-   write(projectKey,[...read(projectKey,this.projects),{name:f.name.trim(),description:f.description,empty:true}]);localStorage.setItem(permissionKey(f.name.trim()),JSON.stringify({version:1,revision:1,archived:false,members:[{id:actor(),role:'owner',download:true}],creators:[],schedules:[],events:[]}));this.done('项目已创建，可从项目列表进入工作区');return;
+   write(projectKey,[...read(projectKey,this.projects),{name:f.name.trim(),description:f.description,empty:true,organizationId:activeOrganization().id,organization:activeOrganization().name}]);localStorage.setItem(permissionKey(f.name.trim()),JSON.stringify({version:1,revision:1,archived:false,members:[{id:actor(),role:'owner',download:true}],creators:[],schedules:[],events:[]}));this.done('项目已创建，可从项目列表进入工作区');return;
   }
   assertWrite(p.name);
   if(kind==='connection'){
@@ -138,14 +164,14 @@ export class Editor {
    if(r&&tasks(p).some(t=>t.connection===r.name)&&row.name!==r.name)throw Error('此连接已被采集任务引用，不能修改名称');write(key(p.name,'connections'),[...connections(p).filter(c=>c.id!==r?.id),row]);
   }
   if(kind==='task'){
-   this.same(tasks(p));this.taskValid(2);const outputs=Object.fromEntries(f.tables.map(t=>[t,String(f.outputs[t]||'').trim()])),names=Object.values(outputs);
+   this.same(tasks(p));normalizeCDC(f);this.taskValid(2);const outputs=Object.fromEntries(f.tables.map(t=>[t,String(f.outputs[t]||'').trim()])),names=Object.values(outputs);
    if(names.some(n=>!n)||new Set(names).size!==names.length)throw Error('请为每个源表设置不同的输出名称');if(names.some(n=>datasets(p).some(d=>d.name===n&&d.producer!==r?.id)))throw Error('输出名称已被数据集占用');
-   write(key(p.name,'tasks'),[...tasks(p).filter(t=>t.id!==r?.id),{id:r?.id||uid(),name:f.name.trim(),connection:f.connection,mode:f.mode,incrementalField:f.incrementalField,tables:f.tables,fields:f.fields,outputs,published:f.mode==='continuous',revision:(r?.revision||0)+1}]);
+   write(key(p.name,'tasks'),[...tasks(p).filter(t=>t.id!==r?.id),{id:r?.id||uid(),name:f.name.trim(),description:f.description,connection:f.connection,...savedCollection(f,connections(p).find(c=>c.name===f.connection)),tables:f.tables,fields:Object.fromEntries(f.tables.map(t=>[t,f.fields[t]])),outputs,published:collectionMode(f)==='continuous',revision:(r?.revision||0)+1}]);
   }
   if(['code','flow'].includes(kind)){
-   if(kind==='code')validateCodeBindings({...f,id:r?.id},datasets(p),codes(p));
+   if(kind==='code'){if(r?.id&&codes(p).find(t=>t.id===r.id)?.revision!==r.revision)throw Error('任务已变更，请关闭后重新打开。');if(this.packageOnly&&(!f.packageId||f.packageId===r?.packageId))throw Error('请选择新的 ZIP 文件后再保存版本。');validateCodeBindings({...f,id:r?.id},datasets(p),codes(p));}
    this.same(kind==='code'?codes(p):flows(p));const available=datasets(p);if(!f.inputs.length||f.inputs.some(id=>!available.some(d=>d.id===id)))throw Error('请绑定当前项目的数据集');if(!f.output.trim())throw Error('请填写输出数据集名称');if(kind==='flow'&&available.some(d=>d.name===f.output.trim()&&(d.producer!==r?.id||f.inputs.includes(d.id))))throw Error('输出已被占用或与输入相同');
-   const job={...r,id:r?.id||uid(),name:f.name.trim(),description:f.description,inputs:f.inputs,inputReferences:f.inputReferences,outputBindings:f.outputBindings,output:f.output.trim(),outputMode:f.outputMode,outputId:f.outputId,replaceAcknowledged:f.replaceAcknowledged,fileName:f.fileName,packageId:f.packageId,packageSize:f.packageSize,configStatus:f.fileName?'READY':'DRAFT',published:false,revision:(r?.revision||0)+1};
+   const job={...r,id:r?.id||uid(),name:f.name.trim(),description:f.description,inputs:f.inputs,inputReferences:f.inputReferences,outputBindings:f.outputBindings,output:f.output.trim(),outputMode:f.outputMode,outputId:f.outputId,replaceAcknowledged:f.replaceAcknowledged,fileName:f.fileName,packageId:f.packageId,packageSize:f.packageSize,packageNote:this.packageOnly?f.packageNote:undefined,configStatus:f.fileName?'READY':'DRAFT',published:false,revision:(r?.revision||0)+1};
    if(kind==='code')saveCode(p,job);else write(key(p.name,'flows'),[...flows(p).filter(t=>t.id!==job.id),job]);
   }
   if(kind==='dataset'){
@@ -159,9 +185,9 @@ export class Editor {
    this.same(readPlans(p));const selected=targets(p).find(t=>t.id===f.task);if(!selected)throw Error('请选择已就绪或已发布且支持调度的任务');if(f.planMode==='event'&&(selected.type==='batch'||!f.watch.length||f.watch.some(id=>!selected.inputs.includes(id))))throw Error('请选择任务输入数据集作为监听对象');if(f.planMode!=='event'&&!engine.compute(f.rule).labels.length)throw Error('当前规则没有未来触发时间');
    const plan=armPlan(p,{...r,id:r?.id||uid(),name:f.name.trim(),description:f.description,task:f.task,mode:f.planMode,rule:f.rule,watch:f.watch,combo:f.combo,enabled:r?.enabled||false,executionIdentity:'PROJECT_RUNTIME',createdBy:r?.createdBy||actor(),records:r?.records||[]});write(key(p.name,'plans'),[...readPlans(p).filter(x=>x.id!==r?.id),plan]);
   }
-  this.done(kind==='code'?(f.fileName?'代码配置已保存，任务已就绪，可运行或创建调度':'任务配置已保存，请下载开发模板并上传代码包'):kind==='task'&&f.mode==='continuous'?'采集配置已保存，可启动采集':kind==='plan'&&!r?'调度计划已创建，当前为停用状态':'配置已保存'+(['task','code','flow'].includes(kind)?'，请重新校验发布':''));
+  this.done(kind==='code'?(this.packageOnly?'代码包新版本已保存并设为当前版本':f.fileName?'代码配置已保存，任务已就绪，可运行或创建调度':'任务配置已保存，请下载开发模板并上传代码包'):kind==='task'&&f.mode==='continuous'?'采集配置已保存，可启动采集':kind==='plan'&&!r?'调度计划已创建，当前为停用状态':'配置已保存'+(['task','code','flow'].includes(kind)?'，请重新校验发布':''));
  }
- saveMember(){const f=this.f,p=this.project,c=cap(p.name),state=permissions(p.name),current=state.members.find(m=>m.id===f.member);if(!c.manage)throw Error('当前角色无权管理成员');if(!users.some(u=>u.id===f.member))throw Error('请选择组织成员');if(!['admin','developer','viewer'].includes(f.role)||c.role==='admin'&&f.role==='admin')throw Error('无权分配此角色');if(current?.role==='owner'||current?.id===actor()||c.role==='admin'&&current?.role==='admin')throw Error('不可修改负责人、自己或同级管理员');if(!this.record&&current)throw Error('该成员已在项目中');localStorage.setItem(permissionKey(p.name),JSON.stringify({...state,revision:state.revision+1,members:[...state.members.filter(m=>m.id!==f.member),{id:f.member,role:f.role,download:f.download}],events:[{at:new Date().toISOString(),action:this.record?'调整权限':'添加成员',actor:actor(),member:f.member},...state.events]}));this.done('成员权限已保存');}
+ saveMember(){const f=this.f,p=this.project,c=cap(p.name),state=permissions(p.name),current=state.members.find(m=>m.id===f.member);if(!c.manage)throw Error('当前角色无权管理成员');if(!organizationUsers().some(u=>u.id===f.member))throw Error('请选择组织成员');if(!['admin','developer','viewer'].includes(f.role)||c.role==='admin'&&f.role==='admin')throw Error('无权分配此角色');if(current?.role==='owner'||current?.id===actor()||c.role==='admin'&&current?.role==='admin')throw Error('不可修改负责人、自己或同级管理员');if(!this.record&&current)throw Error('该成员已在项目中');localStorage.setItem(permissionKey(p.name),JSON.stringify({...state,revision:state.revision+1,members:[...state.members.filter(m=>m.id!==f.member),{id:f.member,role:f.role,download:f.download}],events:[{at:new Date().toISOString(),action:this.record?'调整权限':'添加成员',actor:actor(),member:f.member},...state.events]}));this.done('成员权限已保存');}
  render(){
   const focused=this.host.contains(document.activeElement)?document.activeElement:null,scroll=this.host.scrollTop;
   const selectFocus=disposeFilterSelects(this.host);
@@ -169,28 +195,22 @@ export class Editor {
   this.sourcePicker?.dispose();
   const {kind,record:r,project:p,f,step}=this,options=map=>Object.entries(map).map(([value,label])=>({value,label}));
   const text=(label,name,props={})=>input(label,name,f[name],props);let body='';
-  if(kind!=='member'&&(kind!=='task'||step===0||step===3))body+=text(kind==='project'?'项目名称':kind==='connection'?'连接名称':kind==='dataset'?'数据集名称':kind==='plan'?'计划名称':'任务名称','name',{required:true,extra:`maxlength="${kind==='project'?50:100}"`});
-  if(kind==='project')body+=textarea('项目说明','description',f.description);
-  if(kind==='connection')body+=`<fieldset ${this.busy?'disabled':''}><div class="mc-form-grid">${select('数据库类型','connectorType',f.connectorType,Object.entries(databaseTypes).map(([value,type])=>({value,label:type.label})),{hint:'根据客户数据库选择类型；默认端口为 '+databaseTypes[f.connectorType]?.port+'，可按实际配置修改。'})}${text('连接地址','host',{required:true})}${text('端口','port',{required:true,extra:'inputmode="numeric"'})}${text('数据库名称','database',{required:true})}${text('用户名','user',{required:true})}${text('密码','password',{type:'password',required:!r,placeholder:r?'留空保留原有凭据':'',extra:'autocomplete="new-password"'})}</div>${alert('测试与保存均为本地演示；密码只在表单中使用，不保存到浏览器存储。')}<button type="button" class="btn btn-outline-primary" data-form-action="test" ${this.busy?'disabled':''}>${this.busy?'测试中…':this.tested?'测试成功（演示）':'测试连接（演示）'}</button></fieldset>`;
-  if(kind==='task'){
-   body+=`<div class="wizard-steps mb-4">${['选择连接','选择源表与字段','采集规则','确认输出'].map((label,i)=>`<div class="wizard-step ${step===i?'active':step>i?'completed':''}"><div class="wizard-step-icon"><span class="wizard-step-number">${i+1}</span><i class="bi bi-check-lg wizard-step-check" aria-hidden="true"></i></div><div class="wizard-step-label">${label}</div></div>`).join('')}</div>`;
-   if(step===0)body+=select('来源连接','connection',f.connection,[{value:'',label:'请选择连接'},...connections(p).map(c=>({value:c.name,label:c.name+' · '+c.database}))])+(!connections(p).length?alert('当前项目没有连接，请先关闭表单并新建数据连接。','warning'):'');
-   if(step===1){this.sourcePicker??=new SourcePicker(f,()=>{this.dirty=true;this.error='';this.showError();});body+=this.sourcePicker.markup(connections(p).find(c=>c.name===f.connection));}
-   if(step===2)body+=select('采集方式','mode',f.mode,options(modeNames))+(f.mode==='incremental'?text('递增字段','incrementalField',{required:true}):'')+alert('源表和数据为演示目录。持续采集会自动保留各表主键，可返回上一步查看；单独启动与停止，不参与批次调度。');
-   if(step===3)body+=`<div class="alert alert-secondary">${e(f.connection)} · ${e(modeNames[f.mode])} · ${f.tables.length} 张源表</div>${f.tables.map(t=>input(t+' → 输出数据集','output:'+t,f.outputs[t]||'',{required:true,extra:`aria-label="${e(t)}输出名称"`})).join('')}${alert(f.mode==='continuous'?'保存配置后可启动持续采集；每次运行使用启动时的配置。':'保存后为草稿，校验发布后才能运行或调度。修改配置需重新发布。')}`;
-  }
+  if(kind!=='member'&&kind!=='connection'&&kind!=='task')body+=text(kind==='project'?'项目名称':kind==='connection'?'连接名称':kind==='dataset'?'数据集名称':kind==='plan'?'计划名称':'任务名称','name',{required:true,extra:`maxlength="${kind==='project'?50:100}"`});
+  if(kind==='project')body+=alert('所属组织：'+activeOrganization().name)+textarea('项目说明','description',f.description);
+  if(kind==='connection')body+=this.connectionForm();
+  if(kind==='task')body+=this.collectionForm();
   if(kind==='flow'){
    const available=datasets(p);body+='<div class="mb-3"><span class="form-label">输入数据集</span><div class="d-flex flex-column gap-2 my-3">'+available.map(d=>checkbox(d.name+' · '+(d.state||'数据集'),'inputs',d.id,f.inputs.includes(d.id))).join('')+'</div></div>'+text('输出数据集名称','output',{required:true})+textarea('用途说明','description',f.description)+alert('转换流程在本地模拟版本流转，不执行真实加工逻辑。');
   }
-  if(kind==='code')body+=this.codeForm();
+  if(kind==='code'){if(this.packageOnly)body='';body+=this.codeForm();}
   if(kind==='dataset')body+=select('创建方式','datasetMode',f.datasetMode,[{value:'manual',label:'手动录入'},{value:'csv',label:'CSV 文件导入'}])+(f.datasetMode==='csv'?fileUpload({name:'csvFile',label:'CSV 文件',accept:'.csv,text/csv',hint:'选择一个 UTF-8 编码的 CSV 文件，最大 10 MiB。下方可确认首行含义、字段类型和数据预览。'})+select('首行含义','csvHeader',f.csvHeader,[{value:'header',label:'首行为字段名'},{value:'data',label:'首行为数据'}])+this.importPreview():select('数据分组','group',f.group,[{value:'raw',label:'原始数据'},{value:'processed',label:'加工数据'}])+textarea('字段结构','schema',f.schema,'每行 字段名:类型，例如 id:BIGINT、name:STRING。')+textarea('数据内容','rows',f.rows,'按 CSV 格式录入，列顺序与字段结构一致，无需表头。'));
   if(kind==='dataset')body+=textarea('数据集说明','description',f.description);
   if(kind==='plan')body+=this.planForm();
-  if(kind==='member')body+=select('组织成员','member',f.member,[{value:'',label:'请选择成员'},...users.map(u=>({value:u.id,label:u.name+' · '+u.orgRole}))],{disabled:!!r})+select('项目角色','role',f.role,[...(cap(p.name).owner?[{value:'admin',label:'管理员'}]:[]),{value:'developer',label:'开发者'},{value:'viewer',label:'只读成员'}])+checkbox('允许下载项目数据','download','1',f.download)+alert('只读成员可查看数据与任务，不可配置、发布或运行。下载权限单独授权。');
-  const submit=kind==='task'&&step<3?'下一步':kind==='project'?'创建项目':kind==='plan'&&!r?'创建停用计划':kind==='member'?'保存权限':kind==='connection'?'保存连接':kind==='dataset'?'创建数据集':'保存配置';
+  if(kind==='member')body+=select('组织成员','member',f.member,[{value:'',label:'请选择成员'},...organizationUsers().map(u=>({value:u.id,label:u.name+' · '+u.orgRole}))],{disabled:!!r})+select('项目角色','role',f.role,[...(cap(p.name).owner?[{value:'admin',label:'管理员'}]:[]),{value:'developer',label:'开发者'},{value:'viewer',label:'只读成员'}])+checkbox('允许下载项目数据','download','1',f.download)+alert('只读成员可查看数据与任务，不可配置、发布或运行。下载权限单独授权。');
+  const submit=this.packageOnly?'保存新版本':kind==='connection'&&step===0?'下一步':kind==='task'&&step<2?'下一步':kind==='project'?'创建项目':kind==='plan'&&!r?'创建停用计划':kind==='member'?'保存权限':kind==='connection'?'保存连接':kind==='dataset'?'创建数据集':'保存配置';
   if(kind==='member'&&f.member)body=`<div class="mb-4">${memberIdentity(f.member)}</div>`+body;
-  this.host.innerHTML=`<div id="modal-feedback" aria-live="polite"></div>${kind==='plan'?'':`<p class="text-muted small">${p?`当前项目：${e(p.name)} · `:''}${['task','code','flow'].includes(kind)?kind==='code'?'完成输入输出配置后即可下载模板开发；上传 ZIP 并保存后任务就绪。':kind==='task'&&f.mode==='continuous'?'配置保存后可启动持续采集，运行使用启动时的配置。':'保存为草稿，校验发布后才能运行。修改配置后需要重新发布。':'填写配置后保存，取消不会提交修改。'}</p>`}<form id="workspace-form"><div id="form-error" tabindex="-1" aria-live="assertive">${this.error?alert(this.error,'danger'):''}</div>${body}</form>`;
-  this.footer.hidden=false;this.footer.innerHTML=`<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>${kind==='task'&&step>0?'<button type="button" class="btn btn-outline-secondary" data-form-action="back">上一步</button>':''}<button type="submit" form="workspace-form" class="btn btn-primary" ${this.busy||this.uploadBusy?'disabled':''}>${submit}</button>`;
+  this.host.innerHTML=`<div id="modal-feedback" aria-live="polite"></div>${['plan','connection','task'].includes(kind)?'':`<p class="text-muted small">${p?`当前项目：${e(p.name)} · `:''}${['task','code','flow'].includes(kind)?kind==='code'?'完成输入输出配置后保存，在详情页的「开发与代码包」上传并测试。':kind==='task'&&f.mode==='continuous'?'配置保存后可启动持续采集，运行使用启动时的配置。':'保存为草稿，校验发布后才能运行。修改配置后需要重新发布。':'填写配置后保存，取消不会提交修改。'}</p>`}<form id="workspace-form"><div id="form-error" tabindex="-1" aria-live="assertive">${this.error?alert(this.error,'danger'):''}</div>${body}</form>`;
+  this.footer.hidden=false;this.footer.innerHTML=`${kind==='connection'&&step===1?'<button type="button" class="btn btn-outline-primary me-auto" data-form-action="test" '+(this.busy?'disabled':'')+'>'+(this.busy?'测试中…':this.tested?'重新测试连接（演示）':'测试连接（演示）')+'</button>':''}<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>${['task','connection'].includes(kind)&&step>0?'<button type="button" class="btn btn-outline-secondary" data-form-action="back" '+(this.busy?'disabled':'')+'>上一步</button>':''}<button type="submit" form="workspace-form" class="btn btn-primary" ${this.busy||this.uploadBusy||kind==='connection'&&step===0&&!databaseTypes[f.connectorType]?'disabled':''}>${submit}</button>`;
   if(kind==='code')this.updateCodeControls();
   if(kind==='task'&&step===1)this.sourcePicker.mount(this.host,this.footer.querySelector('[type="submit"]'));
   if(kind==='plan')this.updatePreview();
@@ -202,6 +222,26 @@ export class Editor {
   mountDatePickers(this.host);
   if(focused?.name&&!selectFocus){const next=[...this.host.querySelectorAll('input,select,textarea')].find(el=>el.name===focused.name&&(!['checkbox','radio'].includes(focused.type)||el.value===focused.value));next?.focus({preventScroll:true});}
   this.host.scrollTop=scroll;
+ }
+ collectionForm(){
+  const {f,step,project:p}=this,connection=connections(p).find(c=>c.name===f.connection);
+  let body=`<div class="wizard-steps mb-4">${['选择连接与采集方式','选择数据与配置输出','采集规则'].map((label,i)=>`<div class="wizard-step ${step===i?'active':step>i?'completed':''}" ${step===i?'aria-current="step"':''}><div class="wizard-step-icon"><span class="wizard-step-number">${i+1}</span><i class="bi bi-check-lg wizard-step-check" aria-hidden="true"></i></div><div class="wizard-step-label">${label}</div></div>`).join('')}</div>`;
+  const heading=(title,description)=>`<div class="mb-4"><h3 class="h5 mb-2">${title}</h3><p class="text-muted small mb-0">${description}</p></div>`;
+  if(step===0)return body+heading('选择连接与采集方式','先选择数据来源与采集方式，下一步配置数据范围和输出。')+`<div class="row g-4"><div class="col-md-8">${input('任务名称','name',f.name,{required:true,extra:'maxlength="100"'})}${select('来源连接','connection',f.connection,[{value:'',label:'请选择连接'},...connections(p).map(c=>({value:c.name,label:c.name+' · '+(databaseTypes[databaseType(c)]?.label||'')+' · '+c.database}))])}${collectionMethodForm(f)}${textarea('用途说明（可选）','description',f.description)}${!connections(p).length?alert('当前项目没有连接，请先新建数据连接。','warning'):''}</div><aside class="col-md-4"><div class="card"><div class="card-body"><h4 class="h6">来源信息</h4>${connection?`<p class="mb-2">${e(databaseTypes[databaseType(connection)]?.label)}</p><p class="small text-muted text-break">${e(connection.host)}:${e(connection.port)}<br>${e(connection.database)}</p>`:'<p class="small text-muted">选择连接后查看来源信息。</p>'}<hr><p class="small mb-0">输出位置<br><strong>${e(p.name)} / 原始数据</strong></p></div></div></aside></div>`;
+  if(step===1){for(const table of Object.keys(sourceCatalog)){try{f.sourceSchemas[table]=readSourceSchema(p,{connection,table});}catch(error){f.sourceSchemas[table]={fields:[],error:error.message};}}this.sourcePicker??=new SourcePicker(f,()=>{this.dirty=true;this.error='';this.showError();});return body+this.sourcePicker.markup(connection);}
+  return body+`<div class="row g-4"><div class="col-lg-8">${collectionRulesForm(f,connection)}</div><aside class="col-lg-4"><section class="card"><div class="card-header"><h3 class="card-title mb-0">本次采集</h3></div><div class="card-body"><strong class="d-block text-break mb-2">${e(f.name)}</strong><p class="small text-muted">${e(f.connection)} · ${e(databaseTypes[databaseType(connection)]?.label)}</p><p class="small">${f.tables.length} 个输出 · ${e(p.name)} / 原始数据</p><ul class="list-group list-group-flush">${f.tables.map(t=>`<li class="list-group-item px-0"><span class="small text-muted">${e(t)} · ${f.method==='JDBC'&&queryMode(f,t)==='sql'?'SQL · 结果结构待解析':(f.fields[t]?.length||0)+' 字段'}</span><strong class="d-block small text-break">→ ${e(f.outputs[t])}</strong></li>`).join('')}</ul><hr><p class="small mb-0">${f.method==='CDC'?'保存后可单独启动持续采集；配置修改不会替换已运行的实例。':'保存为草稿，校验发布后可手动运行或创建调度。'}</p></div></section></aside></div><p class="small text-muted mt-3 mb-0">当前为前端演示；配置会保存，SQL 查询与 Debezium 捕获尚未连接真实执行服务。</p>`;
+ }
+ connectionForm(){
+  const {f,step,record:r}=this,type=databaseTypes[f.connectorType];
+  const steps=`<div class="wizard-steps mb-4" aria-label="新建数据连接步骤">${['选择 Source','数据连接配置'].map((label,i)=>`<div class="wizard-step ${step===i?'active':step>i?'completed':''}" ${step===i?'aria-current="step"':''}><div class="wizard-step-icon"><span class="wizard-step-number">${i+1}</span><i class="bi bi-check-lg wizard-step-check" aria-hidden="true"></i></div><div class="wizard-step-label">${label}</div></div>`).join('')}</div>`;
+  if(step===0)return steps+`<fieldset><legend class="h5 mb-2">选择数据源类型</legend><p class="text-muted mb-4">选择要连接的数据库，下一步填写连接信息。</p><div class="row g-3">${Object.entries(databaseTypes).map(([value,item])=>`<div class="col-sm-6"><div class="plan-card h-100"><input class="btn-check" type="radio" name="connectorType" id="source-${e(value)}" value="${e(value)}" ${f.connectorType===value?'checked':''}><label class="plan-card-label d-flex align-items-center gap-3 p-3" for="source-${e(value)}"><span class="text-primary fs-3">${icon('database')}</span><span class="flex-grow-1"><strong class="d-block mb-1">${e(item.label)}</strong><span class="d-block text-muted small">${e(item.description)}</span></span>${f.connectorType===value?'<span class="text-primary" aria-label="已选择">'+icon('check-circle-fill')+'</span>':''}</label></div></div>`).join('')}</div></fieldset>`;
+  const needsPassword=!r||f.connectorType!==databaseType(r);
+  return steps+`<div class="d-flex justify-content-between align-items-center gap-3 mb-4"><div class="d-flex align-items-center gap-2"><span class="text-primary fs-4">${icon('database')}</span><div><strong>${e(type.label)}</strong><span class="d-block text-muted small">当前项目：${e(this.project.name)}</span><span class="d-block small ${this.tested?'text-success':'text-muted'}" role="status">${this.busy?'正在检查连接配置…':this.tested?icon('check-circle')+' 测试通过，可以保存':!this.connectionChanged()?'已保存的连接配置':'保存前请先测试连接'}</span></div></div><button type="button" class="btn btn-link" data-form-action="change-source" ${this.busy?'disabled':''}>重新选择 Source</button></div><fieldset ${this.busy?'disabled':''}>`+
+   `<div class="mc-form-grid">`+input('连接名称','name',f.name,{required:true,placeholder:'例如 生产订单数据库',extra:'maxlength="100"'})+input('用途说明（选填）','description',f.description,{placeholder:'简要说明连接用途',extra:'maxlength="500"'})+'</div>'+
+   `<div class="mc-form-grid">${input('连接地址','host',f.host,{required:true,placeholder:'数据库主机名或 IP 地址'})}${input('端口','port',f.port,{required:true,placeholder:type.port,extra:'inputmode="numeric"'})}${input(type.databaseLabel,'database',f.database,{required:true,placeholder:type.databasePlaceholder})}${input('用户名','user',f.user,{required:true,placeholder:'数据库账号',extra:'autocomplete="off"'})}</div>`+
+   input('密码','password',f.password,{type:'password',required:needsPassword,placeholder:needsPassword?'请输入数据库密码':'留空保留原有凭据',extra:'autocomplete="new-password"'})+
+   `<p class="text-muted small mb-0">当前为本地演示，不访问真实数据库；密码仅用于本次配置，不保存到浏览器。</p></fieldset>`;
+
  }
  bindingSignature(){return JSON.stringify([this.f.inputs,this.f.inputReferences,this.f.outputBindings.map(({replaceAcknowledged,...binding})=>binding)]);}
  updateCodeControls(){
@@ -218,6 +258,7 @@ export class Editor {
  }
  codeForm(){
   const f=this.f,p=this.project,r=this.record,available=datasets(p);
+  if(this.packageOnly)return '<h3 class="h6">'+e(r.name)+'</h3>'+fileUpload({name:'codeFile',label:'代码包（ZIP）',accept:'.zip',hint:'上传本地开发完成的 ZIP，最大 50 MB。保存后自动递增版本号并设为当前版本，历史包保留。'})+textarea('版本说明','packageNote',this.f.packageNote)+alert('测试将固定提交时最新的输入数据集版本，结果只保存在测试记录中。','secondary');
   const compact=html=>html.replaceAll('class="form-label"','class="form-label visually-hidden"').replaceAll('class="mb-3"','class="mb-0"');
   const inputs=compact(table([{title:'选择输入数据集',render:data=>checkbox(data.name+' · '+(data.state||'数据集'),'inputs',data.id,f.inputs.includes(data.id))},{title:'代码引用名称',render:data=>f.inputs.includes(data.id)?input('输入引用名称 '+data.name,'coderef.'+data.id,inputReference(f,data.id,f.inputs.indexOf(data.id)),{extra:'maxlength="64"'}):'—'},{title:'参考结构 / 版本',render:data=>e((data.schema||[]).length+' 个字段 · '+(data.versionNumber!=null?'v'+data.versionNumber:data.state==='可用'?'未记录版本':'尚未产出'))}],available,{search:false,id:'code-input-bindings',empty:'当前项目暂无数据集，请先采集或创建数据集。'}));
   const eligible=available.filter(data=>data.group==='processed'&&data.writable===true&&(!data.producer||data.producer===r?.id)&&!f.inputs.includes(data.id));
@@ -228,7 +269,7 @@ export class Editor {
   return alert('支持多个输入和多个输出。代码任务统一读取选中的输入，按引用名称分别写入各个输出，无需逐行配对。请完成全部绑定后下载模板。','secondary')+
    '<h3 class="h6">输入数据集</h3>'+inputs+'<div class="d-flex align-items-center justify-content-between my-3"><h3 class="h6 mb-0">输出声明</h3><button type="button" class="btn btn-outline-primary btn-sm" data-form-action="add-code-output">'+icon('plus')+' 添加输出</button></div><div class="table-responsive"><table class="table align-middle" id="code-output-bindings"><thead><tr><th>输出方式</th><th>输出目标</th><th>代码引用名称</th><th>操作</th></tr></thead><tbody>'+compact(outputs)+'</tbody></table></div>'+alert('输入输出引用名称需合法且不能重复；输出不能覆盖输入或占用其他任务的输出。绑定变化后须重新上传代码包。','secondary')+
    '<div class="mb-3"><button type="button" class="btn btn-outline-primary" data-form-action="download-template">'+icon('download')+' 下载代码模板</button><div class="form-text" id="code-template-hint"></div></div>'+
-   fileUpload({name:'codeFile',label:'代码包（ZIP）',accept:'.zip',hint:'选择一个 ZIP 代码包，最大 50 MB。下载模板并完成本地开发后上传，保存配置后生效。'})+textarea('用途说明','description',f.description)+alert('代码任务在本地模拟版本流转，不执行真实加工逻辑。');
+   alert('保存后进入详情页的「开发与代码包」，上传代码包并进行测试。','secondary')+textarea('用途说明','description',f.description)+alert('代码任务在本地模拟版本流转，不执行真实加工逻辑。');
  }
 
  planForm(){
